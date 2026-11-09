@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>AI-Assisted Code Review Design</title>
+<style>
+:root{color-scheme:dark;--bg:#000;--fg:#fff;--mute:#a8a8a8;--surf:#141414;--line:#2e2e2e;--prop:#e6b450;--link:#8ab4ff}
+*{box-sizing:border-box}
+html{background:#000}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:0 16px}
+header,main,nav,footer{max-width:60rem;margin:0 auto}
+header{padding:24px 0 8px;border-bottom:1px solid var(--line)}
+h1{font-size:1.6rem;line-height:1.25;margin:0 0 8px}
+h2{font-size:1.3rem;margin:0 0 12px;padding-top:8px}
+h3{font-size:1.05rem;margin:24px 0 8px}
+section{padding:24px 0;border-bottom:1px solid var(--line)}
+p,li{overflow-wrap:break-word}
+p{margin:8px 0}
+ul,ol{padding-left:1.4rem;margin:8px 0}
+a{color:var(--link)}
+.meta{color:var(--mute);margin:4px 0}
+nav{padding:16px 0;border-bottom:1px solid var(--line)}
+nav h2{font-size:1rem;padding:0;margin:0 0 8px;color:var(--mute)}
+nav ol{columns:2 16rem;margin:0;padding-left:1.6rem}
+nav li{margin:2px 0}
+.tw{overflow-x:auto;margin:12px 0;border:1px solid var(--line)}
+table{border-collapse:collapse;width:100%;font-size:.93rem}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line)}
+th{background:var(--surf);color:var(--mute);font-weight:600;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+code{font:.88em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--surf);padding:1px 5px;border-radius:3px}
+pre{background:var(--surf);border:1px solid var(--line);padding:12px;overflow-x:auto;margin:12px 0;line-height:1.45}
+pre code{background:none;padding:0;font-size:.85rem}
+.tag{font-size:.8rem;font-weight:600}
+.proposed{color:var(--prop)}
+.source{color:var(--mute)}
+.note{border-left:3px solid var(--prop);padding:2px 12px;margin:12px 0;background:var(--surf)}
+figure{margin:16px 0}
+figcaption{color:var(--mute);font-size:.9rem;margin-top:6px}
+svg{width:100%;height:auto;display:block;background:var(--surf);border:1px solid var(--line)}
+footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
+@media (min-width:700px){body{padding:0 32px}h1{font-size:2rem}}
+</style>
+</head>
+<body>
+<header>
+<h1>AI-Assisted Code Review: Design for Implementing Agents</h1>
+<p class="meta">Status: draft. Audience: coding agents that implement or extend this system.</p>
+</header>
+
+<nav aria-label="Table of contents">
+<h2>Contents</h2>
+<ol>
+<li><a href="#conventions">Conventions</a></li>
+<li><a href="#goal">Goal and problems solved</a></li>
+<li><a href="#architecture">Architecture</a></li>
+<li><a href="#impact">Change-impact analysis pipeline</a></li>
+<li><a href="#contract">Output contract</a></li>
+<li><a href="#tuning">Prompt-tuning loop</a></li>
+<li><a href="#cost">Cost and model routing</a></li>
+<li><a href="#layers">Review layers and gating</a></li>
+<li><a href="#evidence">Evidence requirements</a></li>
+<li><a href="#measurement">Measurement</a></li>
+<li><a href="#open">Open questions</a></li>
+<li><a href="#refs">References</a></li>
+</ol>
+</nav>
+
+<main>
+
+<section id="conventions">
+<h2>Conventions</h2>
+<ul>
+<li><span class="tag source">Source</span>: stated in the source notes (architecture sketch, user spec, or reference material).</li>
+<li><span class="tag proposed">Proposed</span>: not in the source notes. Treat as a default to confirm, not a decided requirement.</li>
+<li>MUST / SHOULD / MAY keep their RFC 2119 meanings.</li>
+</ul>
+</section>
+
+<section id="goal">
+<h2>1. Goal and problems solved</h2>
+<p>Goal (Source, sketch title block): "Codebase Context. It runs your code. The right model for each task."</p>
+<p>The system reviews a pull request (PR) automatically and posts actionable bug findings back to it. It targets five problems (Source).</p>
+<div class="tw"><table>
+<thead><tr><th>#</th><th>Problem</th><th>Main countermeasure in this design</th></tr></thead>
+<tbody>
+<tr><td>P1</td><td>Missed bugs</td><td>Change-impact analysis (<a href="#impact">§3</a>), autonomous testing (<a href="#testing">§2.5</a>), prompt-tuning loop against known bugs (<a href="#tuning">§5</a>)</td></tr>
+<tr><td>P2</td><td>Missing context</td><td>MCP docs and tickets, codebase indexer, living wiki (<a href="#sources">§2.3</a>, <a href="#wiki">§2.4</a>)</td></tr>
+<tr><td>P3</td><td>Expensive reviews</td><td>Cheap model for context selection, frontier model only for review (<a href="#cost">§6</a>)</td></tr>
+<tr><td>P4</td><td>Nitpicky comments</td><td>Bug-only output contract (<a href="#contract">§4</a>), skip-nitpicks rule (<a href="#tuning">§5</a>)</td></tr>
+<tr><td>P5</td><td>New bugs on every run</td><td>Fixed JSON schema and categories (<a href="#contract">§4</a>), regression dataset (<a href="#tuning">§5</a>). <span class="tag proposed">Proposed</span>: stabilise output across runs by deduplicating against prior findings (<a href="#measurement">§9</a>)</td></tr>
+</tbody></table></div>
+<p>Non-goals (Source, ref. G and H): replacing human review of architecture, product behaviour, migrations, and infrastructure. Merge-ready is not launch-ready (<a href="#adversarial">§7.6</a>).</p>
+</section>
+
+<section id="architecture">
+<h2>2. Architecture</h2>
+
+<figure>
+<svg viewBox="0 0 760 470" role="img" aria-labelledby="dfT dfD" font-family="system-ui,sans-serif" font-size="13" fill="#fff">
+<title id="dfT">Architecture data flow</title>
+<desc id="dfD">A GitHub PR webhook enters a sandbox holding the agent, which posts a PR comment. Docs and tickets via MCP and the codebase via an indexer feed the review agent. Periodic crawls plus reverts and incidents feed a living wiki, which feeds a review agent in its own sandbox. A cheap model selects context for a frontier model.</desc>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#fff"/></marker></defs>
+<g fill="none" stroke="#fff" stroke-width="1.5">
+<rect x="10" y="30" width="150" height="50"/>
+<rect x="250" y="20" width="230" height="70" stroke-dasharray="5 4"/>
+<rect x="290" y="45" width="150" height="35"/>
+<rect x="590" y="30" width="150" height="50"/>
+<rect x="10" y="150" width="150" height="50"/>
+<rect x="10" y="220" width="150" height="50"/>
+<rect x="260" y="170" width="170" height="80"/>
+<rect x="540" y="150" width="200" height="50"/>
+<rect x="540" y="220" width="200" height="50"/>
+<rect x="10" y="330" width="150" height="40"/>
+<rect x="10" y="385" width="150" height="40"/>
+<rect x="250" y="340" width="150" height="60"/>
+<rect x="520" y="330" width="220" height="80" stroke-dasharray="5 4"/>
+<rect x="545" y="360" width="170" height="40"/>
+</g>
+<g fill="none" stroke="#fff" stroke-width="1.5" marker-end="url(#ar)">
+<path d="M160 55H290"/>
+<path d="M440 62H590"/>
+<path d="M160 175H210V200H260"/>
+<path d="M160 245H210V225H260"/>
+<path d="M540 175H485V200H430" />
+<path d="M640 200V220"/>
+<path d="M540 245H485V225H430"/>
+<path d="M160 350H205V365H250"/>
+<path d="M160 405H205V385H250"/>
+<path d="M400 370H545"/>
+</g>
+<g>
+<text x="85" y="52" text-anchor="middle">GitHub</text><text x="85" y="68" text-anchor="middle">PR webhook</text>
+<text x="365" y="38" text-anchor="middle" fill="#a8a8a8">Sandbox</text>
+<text x="365" y="67" text-anchor="middle">Agent</text>
+<text x="665" y="52" text-anchor="middle">PR comment</text><text x="665" y="68" text-anchor="middle" fill="#a8a8a8">(out)</text>
+<text x="85" y="170" text-anchor="middle">Docs + Tickets</text><text x="85" y="187" text-anchor="middle" fill="#a8a8a8">via MCP</text>
+<text x="85" y="240" text-anchor="middle">Codebase</text><text x="85" y="257" text-anchor="middle" fill="#a8a8a8">via indexer</text>
+<text x="345" y="205" text-anchor="middle">Review Agent</text><text x="345" y="223" text-anchor="middle" fill="#a8a8a8">(context in)</text>
+<text x="640" y="172" text-anchor="middle">Cheap model</text><text x="640" y="189" text-anchor="middle" fill="#a8a8a8">selects context</text>
+<text x="640" y="242" text-anchor="middle">Frontier model</text><text x="640" y="259" text-anchor="middle" fill="#a8a8a8">performs review</text>
+<text x="85" y="355" text-anchor="middle">Periodic crawls</text><text x="85" y="369" text-anchor="middle" fill="#a8a8a8" font-size="11">of the codebase</text>
+<text x="85" y="410" text-anchor="middle">Reverts + Incidents</text>
+<text x="325" y="365" text-anchor="middle">Living Wiki</text>
+<text x="630" y="348" text-anchor="middle" fill="#a8a8a8" font-size="12">Sandbox</text>
+<text x="630" y="385" text-anchor="middle">Review Agent</text>
+</g>
+</svg>
+<figcaption>Data flow. Top: PR webhook into the sandboxed agent, PR comment out. Middle: MCP docs and tickets plus the codebase indexer feed the review agent; the cheap model hands selected context to the frontier model. Bottom: crawls plus reverts and incidents build the living wiki, which feeds a review agent in its own sandbox.</figcaption>
+</figure>
+
+<h3 id="components">2.1 Components</h3>
+<div class="tw"><table>
+<thead><tr><th>Component</th><th>Responsibility</th><th>Source</th></tr></thead>
+<tbody>
+<tr><td>Webhook receiver</td><td>Receives the GitHub PR webhook and starts a review run</td><td>Source</td></tr>
+<tr><td>Sandbox</td><td>Isolated environment that holds the review agent, PR branch, and dependencies</td><td>Source</td></tr>
+<tr><td>Review agent</td><td>Plans the review, gathers context, analyses bugs, submits the review</td><td>Source</td></tr>
+<tr><td>MCP connectors</td><td>Supply docs and tickets to the review agent</td><td>Source</td></tr>
+<tr><td>Codebase indexer</td><td>Supplies codebase context to the review agent</td><td>Source</td></tr>
+<tr><td>Living wiki</td><td>Knowledge base built from periodic codebase crawls plus reverts and incidents. Feeds a review agent in its own sandbox</td><td>Source</td></tr>
+<tr><td>Autonomous tester</td><td>Runs the app (dev server) on the PR branch. A browser agent drives user flows and produces a bug report</td><td>Source</td></tr>
+<tr><td>Cheap model</td><td>Selects relevant context from candidate files (the sketch names "Jev" as an example)</td><td>Source</td></tr>
+<tr><td>Frontier model</td><td>Performs the review on the selected context</td><td>Source</td></tr>
+<tr><td>PR commenter</td><td>Posts the review as a PR comment</td><td>Source</td></tr>
+</tbody></table></div>
+<p>The sketch labels the review agent with its two context inputs (MCP and indexer) as "model inversion". The notes do not define the term further.</p>
+
+<h3 id="flow">2.2 Data flow</h3>
+<ol>
+<li>GitHub sends a PR webhook to the sandbox.</li>
+<li>The review agent receives the PR diff and runs <strong>Plan Review</strong>.</li>
+<li>Plan Review fans out to three parallel branches:
+<ol type="a">
+<li><strong>Find Context</strong>: the cheap model receives candidate files and selects relevant context for the frontier model. Context sources are MCP (docs, tickets), the indexer (codebase), and the living wiki.</li>
+<li><strong>Test user flows</strong>: the autonomous tester (<a href="#testing">§2.5</a>).</li>
+<li><strong>Analyze bugs</strong>: change-impact analysis (<a href="#impact">§3</a>) plus frontier-model review.</li>
+</ol></li>
+<li>All three branches feed <strong>Submit review</strong>.</li>
+<li>Submit review emits the <code>bugs</code> JSON (<a href="#contract">§4</a>). The agent renders it as a PR comment and posts it.</li>
+</ol>
+<p class="note"><span class="tag proposed">Proposed</span>: Submit review MUST wait for every branch whose result is decision-critical before it emits output (<a href="#lessons">§6.2</a>, "wait for decision-critical results").</p>
+
+<h3 id="sources">2.3 Context sources</h3>
+<div class="tw"><table>
+<thead><tr><th>Source</th><th>Transport</th><th>Content</th></tr></thead>
+<tbody>
+<tr><td>Docs</td><td>MCP</td><td>Design docs, coding standards</td></tr>
+<tr><td>Tickets</td><td>MCP</td><td>Issue or ticket linked to the PR</td></tr>
+<tr><td>Codebase</td><td>Indexer</td><td>Symbols, files, call relationships</td></tr>
+<tr><td>Living wiki</td><td>Periodic crawl</td><td>Codebase knowledge plus history of reverts and incidents</td></tr>
+</tbody></table></div>
+<p><span class="tag proposed">Proposed</span>: a project <code>review.md</code> (ref. G) holds review rules and coding standards, and is always loaded into context.</p>
+
+<h3 id="wiki">2.4 Living wiki</h3>
+<ul>
+<li>Inputs (Source): periodic crawls of the codebase, reverts, incidents.</li>
+<li>Output (Source): wiki content that feeds a review agent running in its own sandbox.</li>
+<li><span class="tag proposed">Proposed</span>: index wiki entries by file path and symbol so Find Context can retrieve entries for the changed code and its callers. Crawl cadence is not decided (<a href="#open">§10</a>).</li>
+</ul>
+
+<h3 id="testing">2.5 Autonomous testing</h3>
+<p><span class="tag source">Source</span>:</p>
+<ol>
+<li>Check out the PR branch and install dependencies in the sandbox.</li>
+<li>Start the app (dev server).</li>
+<li>A browser agent drives the app. Flows depend on what changed:
+<ul>
+<li>auth code changed: run the sign-in flow;</li>
+<li>checkout code changed: run the purchase flow.</li>
+</ul></li>
+<li>Output: a bug report that feeds Submit review.</li>
+</ol>
+<p><span class="tag proposed">Proposed</span>: map each flow to path globs in config. Capture screenshots or video as evidence (<a href="#evidence">§8</a>). Map findings to <code>bug_category</code> values <code>auth-regression</code> and <code>checkout-regression</code> (<a href="#categories">§4.3</a>).</p>
+<p><span class="tag proposed">Proposed</span>: DAST tooling such as OWASP ZAP (see <a href="#refs">§11</a>) can run against the same running app. The notes list it as a reference only.</p>
+</section>
+
+<section id="impact">
+<h2>3. Change-impact analysis pipeline</h2>
+<p>Three sequential steps (Source). Python's <code>ast</code> module is the specified parser (Source). Support for other languages is not decided (<a href="#open">§10</a>).</p>
+
+<h3 id="step1">3.1 Step 1: Analyze changes</h3>
+<ul>
+<li><strong>Purpose</strong>: identify the exact lines and functions modified.</li>
+<li><strong>Input</strong>:
+<ul>
+<li><code>base_ref</code>, <code>head_ref</code> (git refs);</li>
+<li>unified diff of the PR.</li>
+</ul></li>
+<li><strong>Process</strong>:
+<ol>
+<li>For each changed <code>.py</code> file, parse the base and head versions with <code>ast.parse</code>.</li>
+<li>Map changed diff hunks to the enclosing <code>FunctionDef</code>, <code>AsyncFunctionDef</code>, or <code>ClassDef</code> nodes by line range.</li>
+<li>Classify each symbol as <code>added</code>, <code>removed</code>, or <code>modified</code>.</li>
+</ol></li>
+<li><strong>Output</strong> (<span class="tag proposed">Proposed</span> shape):</li>
+</ul>
+<pre><code>{
+  "changed_symbols": [
+    {
+      "file": "calculator.py",
+      "qualname": "calculate_discount",
+      "kind": "function",
+      "change": "modified",
+      "base_lines": [5, 9],
+      "head_lines": [5, 11],
+      "changed_lines": [5]
+    }
+  ]
+}</code></pre>
+
+<h3 id="step2">3.2 Step 2: Build call graph</h3>
+<ul>
+<li><strong>Purpose</strong>: map how functions interact so the system knows which code depends on the modified code.</li>
+<li><strong>Input</strong>: the full project source at <code>head_ref</code>, plus <code>changed_symbols</code> from Step 1.</li>
+<li><strong>Process</strong>:
+<ol>
+<li>Scan every module and collect function and method definitions with their qualified names.</li>
+<li>Collect <code>ast.Call</code> nodes and resolve each callee to a definition where possible.</li>
+<li>Build a directed graph <code>caller → callee</code>.</li>
+<li>For each changed symbol, collect its callers (reverse edges). <span class="tag proposed">Proposed</span>: limit the depth with a config value; the default depth is not decided.</li>
+</ol></li>
+<li><strong>Output</strong> (<span class="tag proposed">Proposed</span> shape):</li>
+</ul>
+<pre><code>{
+  "call_sites": [
+    {
+      "callee": "calculator.calculate_discount",
+      "caller": "checkout.apply_promo",
+      "file": "checkout.py",
+      "line": 42,
+      "in_diff": false,
+      "args": {"positional": 2, "keywords": []}
+    }
+  ],
+  "unresolved_calls": 0
+}</code></pre>
+<p>Constraint: report <code>in_diff: false</code> call sites explicitly. These are "callers outside the diff context", the main source of contract-mismatch bugs (Source example).</p>
+
+<h3 id="step3">3.3 Step 3: Detect contract changes</h3>
+<ul>
+<li><strong>Purpose</strong>: check whether a function's signature changed. If it did, existing call sites may now be broken.</li>
+<li><strong>Input</strong>: base and head <code>ast.arguments</code> for each <code>modified</code> symbol, plus <code>call_sites</code> from Step 2.</li>
+<li><strong>Process</strong>:
+<ol>
+<li>Compare positional parameters, defaults, keyword-only parameters, <code>*args</code>, and <code>**kwargs</code>.</li>
+<li>A contract change exists if a parameter is added without a default, removed, renamed, or reordered.</li>
+<li>For each call site of a changed contract, check whether its arguments still bind to the new signature.</li>
+<li>Each call site that fails to bind is a candidate bug.</li>
+</ol></li>
+<li><strong>Output</strong>: candidate bugs passed to the frontier model for confirmation. Each candidate becomes at most one entry in the <code>bugs</code> output (<a href="#contract">§4</a>), with <code>bug_category</code> <code>contract-mismatch</code> or <code>missing-caller-update</code>.</li>
+</ul>
+</section>
+
+<section id="contract">
+<h2>4. Output contract</h2>
+
+<h3 id="schema">4.1 Schema</h3>
+<p>The review emits exactly one JSON object with a single top-level key <code>bugs</code> (Source).</p>
+<pre><code>{
+  "bugs": [
+    {
+      "changed_file": "calculator.py",
+      "changed_lines": "5",
+      "bug_category": "contract-mismatch",
+      "summary": "Function signature changed without updating callers.",
+      "comment": "The function 'calculate_discount' now takes an additional parameter 'min_purchase', but callers (outside the diff context) still call it with only 'price' and 'discount_percent', leading to a contract mismatch.",
+      "diff_fix_suggestion": "```diff\n-def calculate_discount(price, discount_percent):\n+def calculate_discount(price, discount_percent, min_purchase):\n```"
+    }
+  ]
+}</code></pre>
+
+<h3 id="fields">4.2 Field rules</h3>
+<p>The JSON keys are fixed. Do not rename, add, or remove keys. Downstream tooling and the tuning loop (<a href="#tuning">§5</a>) depend on them.</p>
+<div class="tw"><table>
+<thead><tr><th>Key</th><th>Type</th><th>Rule</th></tr></thead>
+<tbody>
+<tr><td><code>changed_file</code></td><td>string</td><td>Repo-relative path of a file in the PR diff</td></tr>
+<tr><td><code>changed_lines</code></td><td>string</td><td>Line reference in <code>changed_file</code>. A string, not a number (Source example: <code>"5"</code>). <span class="tag proposed">Proposed</span>: a single line <code>"5"</code> or a range <code>"5-11"</code></td></tr>
+<tr><td><code>bug_category</code></td><td>string</td><td>One value from <a href="#categories">§4.3</a></td></tr>
+<tr><td><code>summary</code></td><td>string</td><td>One sentence stating the defect</td></tr>
+<tr><td><code>comment</code></td><td>string</td><td>Explanation for the PR author: what breaks, where, and why</td></tr>
+<tr><td><code>diff_fix_suggestion</code></td><td>string</td><td>A fenced <code>diff</code> code block with the suggested fix</td></tr>
+</tbody></table></div>
+<p>Constraints:</p>
+<ul>
+<li>An empty review is <code>{"bugs": []}</code>. Do not emit prose outside the JSON.</li>
+<li>Each entry describes a bug, not a style preference (<a href="#rules">§5.3</a>).</li>
+<li><span class="tag proposed">Proposed</span>: reject or retry output that fails schema validation before posting.</li>
+</ul>
+
+<h3 id="categories">4.3 <code>bug_category</code> enum</h3>
+<div class="tw"><table>
+<thead><tr><th>Value</th><th>Status</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>contract-mismatch</code></td><td>Source</td><td>A signature or interface changed and existing callers no longer match</td></tr>
+<tr><td><code>missing-caller-update</code></td><td class="proposed">Proposed</td><td>Callee changed intentionally, but one or more call sites were not updated</td></tr>
+<tr><td><code>unhandled-error-path</code></td><td class="proposed">Proposed</td><td>A new or changed code path can raise or fail without handling</td></tr>
+<tr><td><code>auth-regression</code></td><td class="proposed">Proposed</td><td>Sign-in or authorisation behaviour broke (from the sign-in flow test)</td></tr>
+<tr><td><code>checkout-regression</code></td><td class="proposed">Proposed</td><td>Purchase flow broke (from the purchase flow test)</td></tr>
+<tr><td><code>security</code></td><td class="proposed">Proposed</td><td>Security defect such as exposed secrets or permission bypass (ref. G, I)</td></tr>
+<tr><td><code>data-integrity</code></td><td class="proposed">Proposed</td><td>Data loss or corruption risk, including migrations (ref. I)</td></tr>
+<tr><td><code>known-incident-pattern</code></td><td class="proposed">Proposed</td><td>The change repeats a pattern recorded in the living wiki from a revert or incident</td></tr>
+</tbody></table></div>
+<p>Adding a value requires updating this table and the tuning dataset labels (<a href="#tuning">§5</a>).</p>
+</section>
+
+<section id="tuning">
+<h2>5. Prompt-tuning loop</h2>
+
+<h3 id="dataset">5.1 Dataset</h3>
+<p>Source: historical PRs with known bugs.</p>
+<p><span class="tag proposed">Proposed</span> record shape:</p>
+<pre><code>{
+  "pr_id": "string",
+  "base_ref": "sha",
+  "head_ref": "sha",
+  "known_bugs": [
+    {"changed_file": "string", "changed_lines": "string", "bug_category": "string"}
+  ]
+}</code></pre>
+<p><span class="tag proposed">Proposed</span> sources for known bugs: reverts and incidents, the same inputs as the living wiki.</p>
+
+<h3 id="loop">5.2 Loop (Source)</h3>
+<ol>
+<li>Run the review agent on every PR in the dataset.</li>
+<li>Compare the agent output with the known bugs.</li>
+<li>Tune the prompt.</li>
+<li>Rerun. Repeat until results stop improving.</li>
+</ol>
+<p><span class="tag proposed">Proposed</span> matching rule for step 2: a finding matches a known bug when <code>changed_file</code> is equal, the <code>changed_lines</code> ranges overlap, and <code>bug_category</code> is equal. Report recall, precision, and false positives per category.</p>
+
+<h3 id="rules">5.3 Rules (Source)</h3>
+<ul>
+<li>Optimise for specific bug types.</li>
+<li>Skip nitpicks. Do not report style, naming, formatting, or preference issues. Linters and formatters cover those (ref. G, layer 1).</li>
+</ul>
+</section>
+
+<section id="cost">
+<h2>6. Cost and model routing</h2>
+
+<h3 id="routing">6.1 Routing (Source)</h3>
+<div class="tw"><table>
+<thead><tr><th>Stage</th><th>Model tier</th></tr></thead>
+<tbody>
+<tr><td>Select candidate files and relevant context</td><td>Cheap model</td></tr>
+<tr><td>Review the change and decide what is a bug</td><td>Frontier model</td></tr>
+</tbody></table></div>
+<p><span class="tag proposed">Proposed</span>: run the cheap model for parallel discovery tasks too (context search, flow selection). Keep the final bug decision and Submit review on the frontier model.</p>
+
+<h3 id="lessons">6.2 Lessons from the Cohere ProgramBench talk (Source, ref. K)</h3>
+<ol>
+<li><strong>The lead sets the ceiling and the workers set the price.</strong> Output quality depends on the frontier lead. Cheap workers reduce cost. Reported result: a lead plus 16 cheaper planners cost about 70% less than an all-frontier team, with close to the same performance.</li>
+<li><strong>Delegate discovery, not verification.</strong> Delegate discovery and planning to cheap workers. Implementation and verification workers added little. In this system the frontier model verifies and decides on bugs.</li>
+<li><strong>Wait for decision-critical results.</strong> Failure modes were premature commitment and poor information flow. Explicit wait-for-results instructions helped. The lead MUST NOT submit before decision-critical branches (<a href="#flow">§2.2</a>) return.</li>
+<li>Peer messaging between workers barely helped. <span class="tag proposed">Proposed</span>: do not build worker-to-worker messaging.</li>
+<li>Measure reward per added dollar (<a href="#measurement">§9</a>).</li>
+</ol>
+
+<h3 id="levers">6.3 Other cost levers (Source, ref. F)</h3>
+<p>TokenEconomizer (Microsoft Research and UC Berkeley) reports 18–31% lower agent cost without changing the model, using micro-skills, tool pruning, and failure-loop detection. It runs locally. Recommended trial (Source): run it for one week on the most-used repos. Whether it applies to the sandboxed review agent is not decided (<a href="#open">§10</a>).</p>
+</section>
+
+<section id="layers">
+<h2>7. Review layers and gating</h2>
+
+<h3 id="layerlist">7.1 Layers (Source, ref. G)</h3>
+<ol>
+<li>Automate the obvious: types, lint, format, tests, security scans.</li>
+<li>Review locally with a fresh agent before pushing.</li>
+<li>CI or platform checks on every PR. This system runs at this layer.</li>
+<li>Human review of architecture, product behaviour, migrations, and infrastructure.</li>
+</ol>
+<p>Rules (Source): run the code before review. Use deterministic hooks that feed failures back to the agent. Triage findings into must-fix and minor. Reviewers check correctness, security, robustness, and simplicity.</p>
+
+<h3 id="risk">7.2 Risk scoring (Source, ref. I)</h3>
+<p>Run after CI is green. Score six factors:</p>
+<ol>
+<li>Change surface</li>
+<li>Blast radius</li>
+<li>Reversibility</li>
+<li>Data security</li>
+<li>Operations impact</li>
+<li>Verification gap</li>
+</ol>
+<p>Bands (Source example):</p>
+<div class="tw"><table>
+<thead><tr><th>Score</th><th>Band</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td>&lt; 24</td><td>Low</td><td>May auto-approve</td></tr>
+<tr><td>25–64</td><td>Medium</td><td>Human approval required</td></tr>
+<tr><td>≥ 65</td><td>High</td><td>Human approval required</td></tr>
+</tbody></table></div>
+<p>Notes:</p>
+<ul>
+<li>The source does not assign a score of exactly 24. <span class="tag proposed">Proposed</span>: treat 24 as medium until decided (<a href="#open">§10</a>).</li>
+<li>Per-factor weights and scales are not given in the source (<a href="#open">§10</a>).</li>
+<li>Diff size alone does not set risk.</li>
+<li>Keep an audit trail of every score and decision.</li>
+<li>Start conservative.</li>
+</ul>
+
+<h3 id="blocks">7.3 Hard blocks (Source)</h3>
+<p>Changes that touch any of these areas MUST NOT be auto-approved, regardless of score:</p>
+<ul>
+<li>auth</li>
+<li>payments</li>
+<li>migrations</li>
+<li>secrets</li>
+<li>permissions</li>
+<li>public APIs</li>
+</ul>
+<p><span class="tag proposed">Proposed</span>: detect these areas with path globs plus call-graph reachability from <a href="#step2">§3.2</a>.</p>
+
+<h3 id="trunk">7.4 Trunk vs leaf (Source, ref. A)</h3>
+<ul>
+<li>Trunk: core infrastructure with high blast radius. Put review effort here.</li>
+<li>Leaf: isolated code with lower risk.</li>
+<li><span class="tag proposed">Proposed</span>: compute trunk-ness from call-graph in-degree (<a href="#step2">§3.2</a>) and feed it into the blast-radius factor.</li>
+</ul>
+
+<h3 id="flags">7.5 Feature flags (Source, ref. C)</h3>
+<p>Feature flags allow controlled rollout and easy rollback. This reduces the need for deep manual review of every change. <span class="tag proposed">Proposed</span>: a change behind a default-off flag MAY lower the reversibility factor. Hard blocks still apply.</p>
+
+<h3 id="adversarial">7.6 Adversarial review and human final pass (Source, ref. D and E)</h3>
+<ul>
+<li>A second, independent agent reviews the code. The agent that wrote the code MUST NOT be the only reviewer, to avoid confirmation bias.</li>
+<li>Merge-ready is not launch-ready. A human does the last ~20%: high-level audit, performance, security review, and final refinement before launch.</li>
+</ul>
+</section>
+
+<section id="evidence">
+<h2>8. Evidence requirements</h2>
+<p>Source (ref. B and H): demand evidence, not only code. Evidence lets reviewers skim.</p>
+<div class="tw"><table>
+<thead><tr><th>Evidence</th><th>Produced by</th><th>Required when (Proposed)</th></tr></thead>
+<tbody>
+<tr><td>Unit tests</td><td>PR author or authoring agent</td><td>Any logic change</td></tr>
+<tr><td>Runtime evidence (logs, test-run output)</td><td>Sandbox run (<a href="#testing">§2.5</a>)</td><td>Any change that the sandbox can execute</td></tr>
+<tr><td>Screenshots or video</td><td>Browser agent (<a href="#testing">§2.5</a>)</td><td>UI, auth, or checkout changes</td></tr>
+</tbody></table></div>
+<p><span class="tag proposed">Proposed</span>: missing evidence raises the verification-gap factor (<a href="#risk">§7.2</a>).</p>
+</section>
+
+<section id="measurement">
+<h2>9. Measurement</h2>
+<p>Track these per review run and per comment (Source, ref. J and K unless marked).</p>
+<div class="tw"><table>
+<thead><tr><th>Metric</th><th>Definition</th></tr></thead>
+<tbody>
+<tr><td>Addressed rate</td><td>Share of comments followed by a code change that resolves them. uReview reference: about 67%</td></tr>
+<tr><td>Developer response and sentiment</td><td>Whether developers reply, and the tone of replies or reactions</td></tr>
+<tr><td>False positives</td><td>Comments that developers dismiss or mark wrong. Watch for confident bad comments</td></tr>
+<tr><td>Trajectory logs</td><td>Full agent trajectory (tool calls, context selected, model calls) for each run</td></tr>
+<tr><td>Reward per dollar</td><td>Quality gain divided by added model cost</td></tr>
+<tr><td>Cost per review</td><td><span class="tag proposed">Proposed</span>: tokens and dollars by model tier</td></tr>
+<tr><td>Run-to-run stability</td><td><span class="tag proposed">Proposed</span>: share of findings that reappear on unchanged code across reruns (addresses P5)</td></tr>
+</tbody></table></div>
+<p>Source (ref. J): add a post-processing layer that rates, categorises, filters, and deduplicates comments before posting. Track real outcomes, not only comment counts.</p>
+</section>
+
+<section id="open">
+<h2>10. Open questions (not decided)</h2>
+<ol>
+<li>Language support beyond Python <code>ast</code> for <a href="#impact">§3</a>.</li>
+<li>Format of <code>changed_lines</code> for ranges and multi-range findings.</li>
+<li>Final <code>bug_category</code> enum. All values except <code>contract-mismatch</code> are Proposed.</li>
+<li>Weights and scales for the six risk factors, and the band for a score of exactly 24.</li>
+<li>Which cheap model and which frontier model to use. "Jev" appears in the sketch only as an example.</li>
+<li>Call-graph depth limit and handling of dynamic calls that cannot be resolved.</li>
+<li>Living wiki crawl cadence, storage, and retrieval method.</li>
+<li>How the browser agent picks flows beyond sign-in and checkout.</li>
+<li>Whether DAST (OWASP ZAP) runs in the sandbox.</li>
+<li>Whether to adopt TokenEconomizer after the one-week trial.</li>
+<li>Size and labelling process for the historical PR dataset.</li>
+<li>How the adversarial second agent differs from the primary reviewer (model, prompt, or context).</li>
+<li>Meaning of "model inversion" in the sketch.</li>
+<li>Whether this system adopts uReview-style specialised reviewers (single-file, multi-file, monorepo, AI linter, team agents).</li>
+</ol>
+</section>
+
+<section id="refs">
+<h2>11. References</h2>
+<div class="tw"><table>
+<thead><tr><th>Ref</th><th>Source</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>A</td><td>"Trunk vs leaf" video</td><td>Codebase as a tree. Focus review on high-blast-radius trunk code</td></tr>
+<tr><td>B</td><td>Agentic validation video</td><td>Engineers attach AI-produced proof (tests, runtime evidence, visuals) to PRs</td></tr>
+<tr><td>C</td><td>Feature gating video</td><td>Feature flags for controlled rollout and rollback</td></tr>
+<tr><td>D</td><td>Adversarial review video</td><td>Independent second agent reviews to avoid confirmation bias</td></tr>
+<tr><td>E</td><td>Merge-ready vs launch-ready video</td><td>Human final ~20% before launch</td></tr>
+<tr><td>F</td><td><a href="https://github.com/microsoft/TokenEconomizer" target="_blank" rel="noopener noreferrer">https://github.com/microsoft/TokenEconomizer</a></td><td>Local plugin that cuts agent cost 18–31% with micro-skills, tool pruning, and failure-loop detection</td></tr>
+<tr><td>G</td><td>"LGTM, Ship It" (Owain Lewis)</td><td>Four-layer review model, risk-scaled review intensity, project <code>review.md</code></td></tr>
+<tr><td>H</td><td>"LGTM / AI code review problem" episode</td><td>Verify behaviour, demand evidence, keep PRs small</td></tr>
+<tr><td>I</td><td>"Merge Mommy"</td><td>Risk-based auto-approval with six factors, score bands, and hard blocks</td></tr>
+<tr><td>J</td><td>Uber uReview</td><td>Multi-agent review with post-processing and outcome tracking</td></tr>
+<tr><td>K</td><td>Cohere ProgramBench talk</td><td>Strong lead plus cheap planners. Lead sets the ceiling, workers set the price</td></tr>
+<tr><td>—</td><td><a href="https://en.wikipedia.org/wiki/Dynamic_application_security_testing" target="_blank" rel="noopener noreferrer">https://en.wikipedia.org/wiki/Dynamic_application_security_testing</a></td><td>Overview of DAST, testing a running app from outside</td></tr>
+<tr><td>—</td><td><a href="https://www.zaproxy.org/" target="_blank" rel="noopener noreferrer">https://www.zaproxy.org/</a></td><td>OWASP ZAP, an open-source DAST tool</td></tr>
+</tbody></table></div>
+</section>
+
+</main>
+<footer>End of document.</footer>
+</body>
+</html>
