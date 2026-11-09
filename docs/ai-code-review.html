@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>AI-Assisted Code Review Design</title>
+<title>AI-Assisted Code Review Design, Revision 2</title>
 <style>
-:root{color-scheme:dark;--bg:#000;--fg:#fff;--mute:#a8a8a8;--surf:#141414;--line:#2e2e2e;--prop:#e6b450;--link:#8ab4ff}
+:root{color-scheme:dark;--bg:#000;--fg:#fff;--mute:#a8a8a8;--surf:#141414;--line:#2e2e2e;--prop:#e6b450;--sr:#ff9d7a;--adopt:#7fd18b;--link:#8ab4ff}
 *{box-sizing:border-box}
 html{background:#000}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:0 16px}
@@ -15,6 +15,7 @@ header{padding:24px 0 8px;border-bottom:1px solid var(--line)}
 h1{font-size:1.6rem;line-height:1.25;margin:0 0 8px}
 h2{font-size:1.3rem;margin:0 0 12px;padding-top:8px}
 h3{font-size:1.05rem;margin:24px 0 8px}
+h4{font-size:.95rem;margin:16px 0 4px;color:var(--mute)}
 section{padding:24px 0;border-bottom:1px solid var(--line)}
 p,li{overflow-wrap:break-word}
 p{margin:8px 0}
@@ -28,15 +29,21 @@ nav li{margin:2px 0}
 .tw{overflow-x:auto;margin:12px 0;border:1px solid var(--line)}
 table{border-collapse:collapse;width:100%;font-size:.93rem}
 th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line)}
-th{background:var(--surf);color:var(--mute);font-weight:600;white-space:nowrap}
+th{background:var(--surf);color:var(--mute);font-weight:600}
 tr:last-child td{border-bottom:0}
-code{font:.88em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--surf);padding:1px 5px;border-radius:3px}
+code{font:.88em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--surf);padding:1px 5px;border-radius:3px;overflow-wrap:anywhere}
 pre{background:var(--surf);border:1px solid var(--line);padding:12px;overflow-x:auto;margin:12px 0;line-height:1.45}
-pre code{background:none;padding:0;font-size:.85rem}
+pre code{background:none;padding:0;font-size:.85rem;overflow-wrap:normal}
 .tag{font-size:.8rem;font-weight:600}
 .proposed{color:var(--prop)}
 .source{color:var(--mute)}
+.adopted{color:var(--adopt)}
+.sr{color:var(--sr)}
 .note{border-left:3px solid var(--prop);padding:2px 12px;margin:12px 0;background:var(--surf)}
+.warn{border-left:3px solid var(--sr);padding:2px 12px;margin:12px 0;background:var(--surf)}
+.rev{color:var(--mute);font-size:.93rem;border-left:3px solid var(--line);padding-left:10px;margin:12px 0}
+.block{border:1px solid var(--line);background:var(--surf);padding:4px 14px 10px;margin:16px 0}
+.block h3{margin-top:12px}
 figure{margin:16px 0}
 figcaption{color:var(--mute);font-size:.9rem;margin-top:6px}
 svg{width:100%;height:auto;display:block;background:var(--surf);border:1px solid var(--line)}
@@ -47,24 +54,27 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <body>
 <header>
 <h1>AI-Assisted Code Review: Design for Implementing Agents</h1>
-<p class="meta">Status: draft. Audience: coding agents that implement or extend this system.</p>
+<p class="meta">Status: draft, revision 2. Audience: coding agents that implement or extend this system. Source of truth: the revised spec. This page adds a Research section built from eight research digests.</p>
 </header>
 
 <nav aria-label="Table of contents">
 <h2>Contents</h2>
 <ol>
 <li><a href="#conventions">Conventions</a></li>
-<li><a href="#goal">Goal and problems solved</a></li>
-<li><a href="#architecture">Architecture</a></li>
-<li><a href="#impact">Change-impact analysis pipeline</a></li>
-<li><a href="#contract">Output contract</a></li>
-<li><a href="#tuning">Prompt-tuning loop</a></li>
-<li><a href="#cost">Cost and model routing</a></li>
-<li><a href="#layers">Review layers and gating</a></li>
-<li><a href="#evidence">Evidence requirements</a></li>
-<li><a href="#measurement">Measurement</a></li>
-<li><a href="#open">Open questions</a></li>
-<li><a href="#refs">References</a></li>
+<li><a href="#goal">1. Goal and problems solved</a></li>
+<li><a href="#architecture">2. Architecture</a></li>
+<li><a href="#impact">3. Change-impact analysis pipeline</a></li>
+<li><a href="#contract">4. Output contract</a></li>
+<li><a href="#tuning">5. Prompt-tuning loop</a></li>
+<li><a href="#cost">6. Cost and model routing</a></li>
+<li><a href="#layers">7. Review layers and gating</a></li>
+<li><a href="#evidence">8. Evidence requirements</a></li>
+<li><a href="#measurement">9. Measurement</a></li>
+<li><a href="#decisions">10. Research-backed design decisions</a></li>
+<li><a href="#prior-art">11. Related prior art</a></li>
+<li><a href="#research">Research digests (eight summaries)</a></li>
+<li><a href="#open">12. Open questions</a></li>
+<li><a href="#refs">13. References</a></li>
 </ol>
 </nav>
 
@@ -75,8 +85,12 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <ul>
 <li><span class="tag source">Source</span>: stated in the source notes (architecture sketch, user spec, or reference material).</li>
 <li><span class="tag proposed">Proposed</span>: not in the source notes. Treat as a default to confirm, not a decided requirement.</li>
+<li><span class="tag adopted">Adopted</span> (<a href="#decisions">§10</a> only): a design decision supported by a cited research source. <span class="tag proposed">Proposed</span> in §10 means our own inference.</li>
+<li><span class="tag sr">(SR)</span>: self-reported by the vendor or a named customer. Not independently verified. Use as orientation, never as a target.</li>
 <li>MUST / SHOULD / MAY keep their RFC 2119 meanings.</li>
 </ul>
+<p>Revision 2 adds findings from three research digests: <code>claude-blog-research.md</code> (posts P1 to P16), <code>anthropic-news-research.md</code> (posts #1 to #26), and <code>greptile-research.md</code> (posts G1 to G27). Each changed section carries a "Changed in revision 2" note. Section renumbering: Open questions moved from §10 to §12 and References from §11 to §13. Question numbers Q1 to Q14 are unchanged, so a digest reference to "§10 Qn" means §12 Qn.</p>
+<p class="warn">Five further digests exist (Macroscope, CodeRabbit, DeepSource, Cursor, Graphite). Spec revision 2 does not cite them yet. They are summarised in the <a href="#research">Research digests</a> section as input for a later revision, not as part of the plan.</p>
 </section>
 
 <section id="goal">
@@ -89,10 +103,11 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <tr><td>P1</td><td>Missed bugs</td><td>Change-impact analysis (<a href="#impact">§3</a>), autonomous testing (<a href="#testing">§2.5</a>), prompt-tuning loop against known bugs (<a href="#tuning">§5</a>)</td></tr>
 <tr><td>P2</td><td>Missing context</td><td>MCP docs and tickets, codebase indexer, living wiki (<a href="#sources">§2.3</a>, <a href="#wiki">§2.4</a>)</td></tr>
 <tr><td>P3</td><td>Expensive reviews</td><td>Cheap model for context selection, frontier model only for review (<a href="#cost">§6</a>)</td></tr>
-<tr><td>P4</td><td>Nitpicky comments</td><td>Bug-only output contract (<a href="#contract">§4</a>), skip-nitpicks rule (<a href="#tuning">§5</a>)</td></tr>
-<tr><td>P5</td><td>New bugs on every run</td><td>Fixed JSON schema and categories (<a href="#contract">§4</a>), regression dataset (<a href="#tuning">§5</a>). <span class="tag proposed">Proposed</span>: stabilise output across runs by deduplicating against prior findings (<a href="#measurement">§9</a>)</td></tr>
+<tr><td>P4</td><td>Nitpicky comments</td><td>Bug-only output contract (<a href="#contract">§4</a>), skip-nitpicks rule (<a href="#tuning">§5</a>), independent verifier pass and comment filter (<a href="#d1">§10 D1</a>, <a href="#d4">D4</a>)</td></tr>
+<tr><td>P5</td><td>New bugs on every run</td><td>Fixed JSON schema and categories (<a href="#contract">§4</a>), regression dataset (<a href="#tuning">§5</a>). <span class="tag proposed">Proposed</span>: stabilise output across runs with a per-PR findings ledger (<a href="#d11">§10 D11</a>)</td></tr>
 </tbody></table></div>
 <p>Non-goals (Source, ref. G and H): replacing human review of architecture, product behaviour, migrations, and infrastructure. Merge-ready is not launch-ready (<a href="#adversarial">§7.6</a>).</p>
+<p class="rev">Changed in revision 2: P4 and P5 rows now point to the verifier pass, comment filter, and findings ledger. All three source digests independently name the same five problems (greptile-research.md G19, "How to Build a Code Review Agent").</p>
 </section>
 
 <section id="architecture">
@@ -148,7 +163,7 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <text x="630" y="385" text-anchor="middle">Review Agent</text>
 </g>
 </svg>
-<figcaption>Data flow. Top: PR webhook into the sandboxed agent, PR comment out. Middle: MCP docs and tickets plus the codebase indexer feed the review agent; the cheap model hands selected context to the frontier model. Bottom: crawls plus reverts and incidents build the living wiki, which feeds a review agent in its own sandbox.</figcaption>
+<figcaption>Data flow from the source sketch. Top: PR webhook into the sandboxed agent, PR comment out. Middle: MCP docs and tickets plus the codebase indexer feed the review agent; the cheap model hands selected context to the frontier model. Bottom: crawls plus reverts and incidents build the living wiki, which feeds a review agent in its own sandbox. The revision 2 components (verifier, comment filter, findings ledger) are not drawn; see §2.1 and §2.2.</figcaption>
 </figure>
 
 <h3 id="components">2.1 Components</h3>
@@ -165,8 +180,12 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <tr><td>Cheap model</td><td>Selects relevant context from candidate files (the sketch names "Jev" as an example)</td><td>Source</td></tr>
 <tr><td>Frontier model</td><td>Performs the review on the selected context</td><td>Source</td></tr>
 <tr><td>PR commenter</td><td>Posts the review as a PR comment</td><td>Source</td></tr>
+<tr><td>Verifier</td><td>Tries to prove or disprove each candidate bug before it is posted (<a href="#d1">§10 D1</a>)</td><td class="proposed">Proposed (rev 2)</td></tr>
+<tr><td>Comment filter</td><td>Drops findings that match past dismissed comments (<a href="#d4">§10 D4</a>)</td><td class="proposed">Proposed (rev 2)</td></tr>
+<tr><td>Findings ledger</td><td>Per-PR record of posted findings and their outcomes (<a href="#d9">§10 D9</a>, <a href="#d11">D11</a>)</td><td class="proposed">Proposed (rev 2)</td></tr>
 </tbody></table></div>
-<p>The sketch labels the review agent with its two context inputs (MCP and indexer) as "model inversion". The notes do not define the term further.</p>
+<p>The sketch labels the review agent with its two context inputs (MCP and indexer) as "model inversion". Greptile defines the term as reviewing code with a different model family from the one that wrote it (greptile-research.md G19, "How to Build a Code Review Agent"). Whether we adopt it is an open decision (<a href="#d12">§10 D12</a>).</p>
+<p class="rev">Changed in revision 2: "model inversion" is now defined (it was undefined, Q13). Added three Proposed components that the research-backed decisions need.</p>
 
 <h3 id="flow">2.2 Data flow</h3>
 <ol>
@@ -176,12 +195,15 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <ol type="a">
 <li><strong>Find Context</strong>: the cheap model receives candidate files and selects relevant context for the frontier model. Context sources are MCP (docs, tickets), the indexer (codebase), and the living wiki.</li>
 <li><strong>Test user flows</strong>: the autonomous tester (<a href="#testing">§2.5</a>).</li>
-<li><strong>Analyze bugs</strong>: change-impact analysis (<a href="#impact">§3</a>) plus frontier-model review.</li>
+<li><strong>Analyze bugs</strong>: change-impact analysis (<a href="#impact">§3</a>) plus frontier-model review. Output is a list of candidate bugs, not posted findings.</li>
 </ol></li>
-<li>All three branches feed <strong>Submit review</strong>.</li>
+<li><span class="tag proposed">Proposed (rev 2)</span>: <strong>Verify</strong>. Each candidate bug goes to an independent verifier that tries to disprove it (<a href="#d1">§10 D1</a>). Survivors must carry a reproduction or evidence (<a href="#d3">§10 D3</a>).</li>
+<li>All branches feed <strong>Submit review</strong>. Submit review applies the comment filter (<a href="#d4">§10 D4</a>) and the findings ledger (<a href="#d11">§10 D11</a>).</li>
 <li>Submit review emits the <code>bugs</code> JSON (<a href="#contract">§4</a>). The agent renders it as a PR comment and posts it.</li>
 </ol>
 <p class="note"><span class="tag proposed">Proposed</span>: Submit review MUST wait for every branch whose result is decision-critical before it emits output (<a href="#lessons">§6.2</a>, "wait for decision-critical results").</p>
+<p class="note"><span class="tag proposed">Proposed (rev 2)</span>: if any decision-critical branch fails, times out, hits its budget, or returns a model refusal, Submit review MUST post a "review incomplete" status, not <code>{"bugs": []}</code> (<a href="#d13">§10 D13</a>).</p>
+<p class="rev">Changed in revision 2: added the Verify step and the "review incomplete" rule. Sources: verifier agents that vote before posting (claude-blog-research.md P1, "How the Claude Code team does code review"); prove-or-disprove verification (anthropic-news-research.md #17, "Making frontier cybersecurity capabilities available to defenders"); a failed read is reported as "unreadable", never as a quiet day (claude-blog-research.md P2, "Building effective agent automations").</p>
 
 <h3 id="sources">2.3 Context sources</h3>
 <div class="tw"><table>
@@ -192,14 +214,19 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <tr><td>Codebase</td><td>Indexer</td><td>Symbols, files, call relationships</td></tr>
 <tr><td>Living wiki</td><td>Periodic crawl</td><td>Codebase knowledge plus history of reverts and incidents</td></tr>
 </tbody></table></div>
-<p><span class="tag proposed">Proposed</span>: a project <code>review.md</code> (ref. G) holds review rules and coding standards, and is always loaded into context.</p>
+<p><span class="tag proposed">Proposed</span>: a project <code>review.md</code> (ref. G) holds review rules and coding standards, and is always loaded into context. Revision 2 shapes it as described in <a href="#d10">§10 D10</a>.</p>
+<p>All context sources are untrusted input (<a href="#d5">§10 D5</a>). The review agent reads them with read-only credentials.</p>
+<p class="rev">Changed in revision 2: context is classed as untrusted, and <code>review.md</code> structure moves to §10 D10. Source: prompt injection is a named agent threat (anthropic-news-research.md #20, "Our framework for developing safe and trustworthy agents").</p>
 
 <h3 id="wiki">2.4 Living wiki</h3>
 <ul>
 <li>Inputs (Source): periodic crawls of the codebase, reverts, incidents.</li>
 <li>Output (Source): wiki content that feeds a review agent running in its own sandbox.</li>
-<li><span class="tag proposed">Proposed</span>: index wiki entries by file path and symbol so Find Context can retrieve entries for the changed code and its callers. Crawl cadence is not decided (<a href="#open">§10</a>).</li>
+<li><span class="tag proposed">Proposed</span>: index wiki entries by file path and symbol so Find Context can retrieve entries for the changed code and its callers. Crawl cadence is not decided (<a href="#open">§12</a>).</li>
+<li><span class="tag proposed">Proposed (rev 2)</span>: refresh changed paths on merge to main plus a scheduled full crawl, as Greptile does (greptile-research.md G8, "Frontier Code Review Accuracy at Lower Cost with NVIDIA Nemotron 3 Ultra"). Each entry holds purpose, dependencies, past bugs, reverts, and incidents (G1, "Automating Code Validation").</li>
+<li><span class="tag proposed">Proposed (rev 2)</span>: expose the wiki and indexer as tools the agent queries, not as pre-stuffed context. Anthropic replaced pre-indexed RAG with agentic search because the vector DB was fragile (claude-blog-research.md P16, "Seeing like an agent"). Compare both on the <a href="#tuning">§5</a> eval (<a href="#open">§12 Q21</a>).</li>
 </ul>
+<p class="rev">Changed in revision 2: added a refresh trigger and a retrieval mode, citing the posts above.</p>
 
 <h3 id="testing">2.5 Autonomous testing</h3>
 <p><span class="tag source">Source</span>:</p>
@@ -214,12 +241,20 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <li>Output: a bug report that feeds Submit review.</li>
 </ol>
 <p><span class="tag proposed">Proposed</span>: map each flow to path globs in config. Capture screenshots or video as evidence (<a href="#evidence">§8</a>). Map findings to <code>bug_category</code> values <code>auth-regression</code> and <code>checkout-regression</code> (<a href="#categories">§4.3</a>).</p>
-<p><span class="tag proposed">Proposed</span>: DAST tooling such as OWASP ZAP (see <a href="#refs">§11</a>) can run against the same running app. The notes list it as a reference only.</p>
+<p><span class="tag proposed">Proposed</span>: DAST tooling such as OWASP ZAP (see <a href="#refs">§13</a>) can run against the same running app. The notes list it as a reference only.</p>
+<p>Revision 2 constraints (detail in <a href="#d6">§10 D6</a>):</p>
+<ul>
+<li>No internet by default; allowed egress is the model API and a pinned package mirror. Each review gets a disposable instance, with credentials outside the sandbox.</li>
+<li>The tester receives specific suspected behaviours from Analyze bugs, not only path globs. A standalone test agent produced irrelevant, noisy tests (greptile-research.md G2, "Building TREX").</li>
+<li>A test-derived finding without an artifact (log, screenshot, trace, or script) is dropped (<a href="#d3">§10 D3</a>).</li>
+<li>Each flow is checked on the base branch before it runs on head, so the task is known to be solvable (anthropic-news-research.md #6, "Improving our alignment and security practices").</li>
+</ul>
+<p class="rev">Changed in revision 2: the source step 1 ("install dependencies") is now constrained by default-deny egress. Sources: anthropic-news-research.md #6 and #7 ("Investigating three real-world incidents in our cybersecurity evaluations"); claude-blog-research.md P3 ("Claude Code in the cloud").</p>
 </section>
 
 <section id="impact">
 <h2>3. Change-impact analysis pipeline</h2>
-<p>Three sequential steps (Source). Python's <code>ast</code> module is the specified parser (Source). Support for other languages is not decided (<a href="#open">§10</a>).</p>
+<p>Three sequential steps (Source). Python's <code>ast</code> module is the specified parser (Source). Support for other languages is not decided (<a href="#open">§12</a>).</p>
 
 <h3 id="step1">3.1 Step 1: Analyze changes</h3>
 <ul>
@@ -277,7 +312,7 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
   ],
   "unresolved_calls": 0
 }</code></pre>
-<p>Constraint: report <code>in_diff: false</code> call sites explicitly. These are "callers outside the diff context", the main source of contract-mismatch bugs (Source example).</p>
+<p>Constraint: report <code>in_diff: false</code> call sites explicitly. These are "callers outside the diff context", the main source of contract-mismatch bugs (Source example). Greptile calls this blast-radius analysis (greptile-research.md G1, "Automating Code Validation").</p>
 
 <h3 id="step3">3.3 Step 3: Detect contract changes</h3>
 <ul>
@@ -291,7 +326,9 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <li>Each call site that fails to bind is a candidate bug.</li>
 </ol></li>
 <li><strong>Output</strong>: candidate bugs passed to the frontier model for confirmation. Each candidate becomes at most one entry in the <code>bugs</code> output (<a href="#contract">§4</a>), with <code>bug_category</code> <code>contract-mismatch</code> or <code>missing-caller-update</code>.</li>
+<li><span class="tag proposed">Proposed (rev 2)</span>: expose the binding checker as a tool the frontier model and verifier can call, instead of reasoning about signatures freehand. The failing call site is the minimal reproduction cited in <code>comment</code> (<a href="#d3">§10 D3</a>).</li>
 </ul>
+<p class="rev">Changed in revision 2: added the binding checker as a verifier tool. Source: "task verifiers" give the agent a trusted way to check its own output (anthropic-news-research.md #16, "Partnering with Mozilla to improve Firefox's security"). Deterministic tools narrow the search and AI removes false positives (greptile-research.md G1).</p>
 </section>
 
 <section id="contract">
@@ -321,15 +358,19 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <tr><td><code>changed_lines</code></td><td>string</td><td>Line reference in <code>changed_file</code>. A string, not a number (Source example: <code>"5"</code>). <span class="tag proposed">Proposed</span>: a single line <code>"5"</code> or a range <code>"5-11"</code></td></tr>
 <tr><td><code>bug_category</code></td><td>string</td><td>One value from <a href="#categories">§4.3</a></td></tr>
 <tr><td><code>summary</code></td><td>string</td><td>One sentence stating the defect</td></tr>
-<tr><td><code>comment</code></td><td>string</td><td>Explanation for the PR author: what breaks, where, and why</td></tr>
-<tr><td><code>diff_fix_suggestion</code></td><td>string</td><td>A fenced <code>diff</code> code block with the suggested fix</td></tr>
+<tr><td><code>comment</code></td><td>string</td><td>Explanation for the PR author: what breaks, where, and why. Revision 2: MUST name the failing call site, test, or reproduction (<a href="#d3">§10 D3</a>)</td></tr>
+<tr><td><code>diff_fix_suggestion</code></td><td>string</td><td>A fenced <code>diff</code> code block with the suggested fix. It is a suggestion only and is never applied automatically (<a href="#d14">§10 D14</a>)</td></tr>
 </tbody></table></div>
 <p>Constraints:</p>
 <ul>
 <li>An empty review is <code>{"bugs": []}</code>. Do not emit prose outside the JSON.</li>
+<li><code>{"bugs": []}</code> means every decision-critical branch completed and found nothing. A failed, refused, or budget-capped run is reported as "review incomplete", never as an empty review (<a href="#d13">§10 D13</a>).</li>
 <li>Each entry describes a bug, not a style preference (<a href="#rules">§5.3</a>).</li>
 <li><span class="tag proposed">Proposed</span>: reject or retry output that fails schema validation before posting.</li>
+<li><span class="tag proposed">Proposed (rev 2)</span>: emit <code>bugs</code> through a strict tool or JSON schema with <code>additionalProperties: false</code> and an enum for <code>bug_category</code>. Keep post-hoc validation as a backstop.</li>
+<li>Severity, confidence, verifier votes, and pre-existing status live in the findings ledger, not in <code>bugs</code>. Any key change needs a spec revision (<a href="#open">§12 Q17</a>).</li>
 </ul>
+<p class="rev">Changed in revision 2: sharpened <code>comment</code> and <code>diff_fix_suggestion</code>, and separated "empty" from "incomplete". Sources: claude-blog-research.md P10 ("Getting the most out of Opus 5.5": file, line, reason, and how to show the failure), P2 (failed reads are not quiet days), and P6 ("Building with Claude Sonnet 5.5": forced <code>tool_choice</code> returns 400, use <code>strict</code> tools; refusals return HTTP 200 with <code>stop_reason: "refusal"</code>).</p>
 
 <h3 id="categories">4.3 <code>bug_category</code> enum</h3>
 <div class="tw"><table>
@@ -362,6 +403,8 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
   ]
 }</code></pre>
 <p><span class="tag proposed">Proposed</span> sources for known bugs: reverts and incidents, the same inputs as the living wiki.</p>
+<p>Revision 2 additions (<span class="tag proposed">Proposed</span>, detail in <a href="#d8">§10 D8</a>): harvest reverts from GitHub's <code>revert-&lt;pr#&gt;-&lt;branch&gt;</code> naming (greptile-research.md G17); add known-clean PRs (claude-blog-research.md P1), refactor-heavy PRs (greptile-research.md G9), and prompt-injection cases (<a href="#d5">§10 D5</a>). Give each hard case a stated reason and do not build the set only from cases the current reviewer misses (claude-blog-research.md P5). Audit records for mislabelled or unreproducible bugs before tuning; Anthropic flagged more than 10% of its RL environments as defective <span class="tag sr">(SR)</span> (anthropic-news-research.md #6).</p>
+<p class="rev">Changed in revision 2: added dataset sources and hygiene rules from the posts above.</p>
 
 <h3 id="loop">5.2 Loop (Source)</h3>
 <ol>
@@ -371,12 +414,22 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <li>Rerun. Repeat until results stop improving.</li>
 </ol>
 <p><span class="tag proposed">Proposed</span> matching rule for step 2: a finding matches a known bug when <code>changed_file</code> is equal, the <code>changed_lines</code> ranges overlap, and <code>bug_category</code> is equal. Report recall, precision, and false positives per category.</p>
+<p>Revision 2 guards (<span class="tag proposed">Proposed</span>, from claude-blog-research.md P5):</p>
+<ul>
+<li>Split the dataset into train and test. Keep a change only if train and test both improve. Revert on train-up/test-flat (overfitting) or any regression.</li>
+<li>Make one root-cause change per round. Never paste dataset bugs into the prompt.</li>
+<li>Run each eval PR at least 3 times and report run-to-run stability alongside recall (greptile-research.md G2: precision measured as consistency across runs on the same PR).</li>
+<li>Report confidence intervals. Do not merge a gain within noise.</li>
+</ul>
+<p class="rev">Changed in revision 2: step 4 "until results stop improving" now has an overfitting guard and a noise floor. The v1 loop had neither.</p>
 
 <h3 id="rules">5.3 Rules (Source)</h3>
 <ul>
 <li>Optimise for specific bug types.</li>
 <li>Skip nitpicks. Do not report style, naming, formatting, or preference issues. Linters and formatters cover those (ref. G, layer 1).</li>
+<li>Revision 2: prompting alone does not remove nits. Greptile found that prompting cut critical comments along with nits, and that few-shot comment examples made output worse (greptile-research.md G26, "How to Make LLMs Shut Up"). Enforce nit suppression in the verifier and comment filter (<a href="#d4">§10 D4</a>), not only in the prompt.</li>
 </ul>
+<p class="rev">Changed in revision 2: added the enforcement point for the nit rule, citing G26.</p>
 </section>
 
 <section id="cost">
@@ -384,12 +437,14 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 
 <h3 id="routing">6.1 Routing (Source)</h3>
 <div class="tw"><table>
-<thead><tr><th>Stage</th><th>Model tier</th></tr></thead>
+<thead><tr><th>Stage</th><th>Model tier</th><th>Effort (Proposed, rev 2)</th></tr></thead>
 <tbody>
-<tr><td>Select candidate files and relevant context</td><td>Cheap model</td></tr>
-<tr><td>Review the change and decide what is a bug</td><td>Frontier model</td></tr>
+<tr><td>Select candidate files and relevant context</td><td>Cheap model</td><td>Low</td></tr>
+<tr><td>Review the change and decide what is a bug</td><td>Frontier model</td><td>High; maximum for hard-blocked or High-band PRs</td></tr>
+<tr><td>Verify each candidate (rev 2)</td><td>Frontier model</td><td>High</td></tr>
 </tbody></table></div>
 <p><span class="tag proposed">Proposed</span>: run the cheap model for parallel discovery tasks too (context search, flow selection). Keep the final bug decision and Submit review on the frontier model.</p>
+<p class="rev">Changed in revision 2: added an effort axis. Effort gains are largest where verification matters, including code review and security, and effort fixes missed cases rather than wrong approaches (claude-blog-research.md P7, "Using Claude Code: Spending your effort"). Small models stay close to the diff and miss context-dependent bugs, so they never make the final call (greptile-research.md G9). Detail in <a href="#d7">§10 D7</a>.</p>
 
 <h3 id="lessons">6.2 Lessons from the Cohere ProgramBench talk (Source, ref. K)</h3>
 <ol>
@@ -401,7 +456,8 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 </ol>
 
 <h3 id="levers">6.3 Other cost levers (Source, ref. F)</h3>
-<p>TokenEconomizer (Microsoft Research and UC Berkeley) reports 18–31% lower agent cost without changing the model, using micro-skills, tool pruning, and failure-loop detection. It runs locally. Recommended trial (Source): run it for one week on the most-used repos. Whether it applies to the sandboxed review agent is not decided (<a href="#open">§10</a>).</p>
+<p>TokenEconomizer (Microsoft Research and UC Berkeley) reports 18 to 31% lower agent cost without changing the model, using micro-skills, tool pruning, and failure-loop detection. It runs locally. Recommended trial (Source): run it for one week on the most-used repos. Whether it applies to the sandboxed review agent is not decided (<a href="#open">§12</a>).</p>
+<p>Revision 2 additions (<span class="tag proposed">Proposed</span>, detail in <a href="#d7">§10 D7</a>): cache-stable prompt order, a per-run spend cap, and Batch API for nightly sweeps and eval runs (claude-blog-research.md P8, "What a task costs on Opus 5.5"; P15, "Prompt caching is everything"; P2).</p>
 </section>
 
 <section id="layers">
@@ -426,22 +482,25 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <li>Operations impact</li>
 <li>Verification gap</li>
 </ol>
-<p>Bands (Source example):</p>
+<p>Bands (Source example; approvals column added in revision 2):</p>
 <div class="tw"><table>
-<thead><tr><th>Score</th><th>Band</th><th>Action</th></tr></thead>
+<thead><tr><th>Score</th><th>Band</th><th>Action</th><th>Human approvals (rev 2)</th></tr></thead>
 <tbody>
-<tr><td>&lt; 24</td><td>Low</td><td>May auto-approve</td></tr>
-<tr><td>25–64</td><td>Medium</td><td>Human approval required</td></tr>
-<tr><td>≥ 65</td><td>High</td><td>Human approval required</td></tr>
+<tr><td>&lt; 24</td><td>Low</td><td>May auto-approve</td><td>0</td></tr>
+<tr><td>25 to 64</td><td>Medium</td><td>Human approval required</td><td>1</td></tr>
+<tr><td>≥ 65</td><td>High</td><td>Human approval required</td><td>2</td></tr>
 </tbody></table></div>
 <p>Notes:</p>
 <ul>
-<li>The source does not assign a score of exactly 24. <span class="tag proposed">Proposed</span>: treat 24 as medium until decided (<a href="#open">§10</a>).</li>
-<li>Per-factor weights and scales are not given in the source (<a href="#open">§10</a>).</li>
-<li>Diff size alone does not set risk.</li>
+<li>The source does not assign a score of exactly 24. <span class="tag proposed">Proposed</span>: treat 24 as medium until decided (<a href="#open">§12</a>).</li>
+<li>Per-factor weights and scales are not given in the source (<a href="#open">§12</a>).</li>
+<li>Diff size alone does not set risk. Revision 2: larger PRs correlated with faster merges, possibly from lazier review (greptile-research.md G16, "Do Larger PRs Get Merged Faster?"). Do not lower scrutiny for large PRs.</li>
 <li>Keep an audit trail of every score and decision.</li>
 <li>Start conservative.</li>
+<li>Revision 2 approval rules (<a href="#d2">§10 D2</a>): our reviewer's approval never counts as a human approval. Approvals are tied to a commit and are dismissed when new commits land.</li>
+<li>Revision 2: the band also sets review depth (<a href="#d7">§10 D7</a>).</li>
 </ul>
+<p class="rev">Changed in revision 2: Medium and High were both "human approval required" with no count. They now require 1 and 2 humans, matching Anthropic's Low 0 / Medium 1 / High 2 tiers (claude-blog-research.md P1).</p>
 
 <h3 id="blocks">7.3 Hard blocks (Source)</h3>
 <p>Changes that touch any of these areas MUST NOT be auto-approved, regardless of score:</p>
@@ -452,8 +511,10 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <li>secrets</li>
 <li>permissions</li>
 <li>public APIs</li>
+<li>CI workflow files, for example <code>.github/workflows/**</code> (added in revision 2)</li>
 </ul>
 <p><span class="tag proposed">Proposed</span>: detect these areas with path globs plus call-graph reachability from <a href="#step2">§3.2</a>.</p>
+<p class="rev">Changed in revision 2: added CI workflow files. Anthropic requires a human for CI workflow files regardless of tier (claude-blog-research.md P1). A changed workflow can also alter what this system's own checks run.</p>
 
 <h3 id="trunk">7.4 Trunk vs leaf (Source, ref. A)</h3>
 <ul>
@@ -469,7 +530,9 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <ul>
 <li>A second, independent agent reviews the code. The agent that wrote the code MUST NOT be the only reviewer, to avoid confirmation bias.</li>
 <li>Merge-ready is not launch-ready. A human does the last ~20%: high-level audit, performance, security review, and final refinement before launch.</li>
+<li>Revision 2: the second agent is the verifier in <a href="#d1">§10 D1</a>. It uses a fresh context and a different prompt from the finder. Whether it also uses a different model family is open (<a href="#d12">§10 D12</a>).</li>
 </ul>
+<p class="rev">Changed in revision 2: the adversarial agent now has a concrete job (refute each candidate). Single-context agents show self-preferential bias when verifying their own work (claude-blog-research.md P13, "A harness for every task: dynamic workflows in Claude Code").</p>
 </section>
 
 <section id="evidence">
@@ -481,8 +544,11 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <tr><td>Unit tests</td><td>PR author or authoring agent</td><td>Any logic change</td></tr>
 <tr><td>Runtime evidence (logs, test-run output)</td><td>Sandbox run (<a href="#testing">§2.5</a>)</td><td>Any change that the sandbox can execute</td></tr>
 <tr><td>Screenshots or video</td><td>Browser agent (<a href="#testing">§2.5</a>)</td><td>UI, auth, or checkout changes</td></tr>
+<tr><td>Reproduction for each finding (rev 2)</td><td>Analyze bugs or verifier</td><td>Every posted finding (<a href="#d3">§10 D3</a>)</td></tr>
 </tbody></table></div>
 <p><span class="tag proposed">Proposed</span>: missing evidence raises the verification-gap factor (<a href="#risk">§7.2</a>).</p>
+<p><span class="tag proposed">Proposed (rev 2)</span>: optionally render an HTML evidence page (diff, findings, test output, screenshots) linked from the PR comment. The PR comment itself stays rendered from <code>bugs</code> JSON (claude-blog-research.md P14, "Using Claude Code: The unreasonable effectiveness of HTML").</p>
+<p class="rev">Changed in revision 2: evidence now applies to the reviewer's own findings, not only to the author's PR. "Bad evidence is worse than no evidence" (greptile-research.md G2).</p>
 </section>
 
 <section id="measurement">
@@ -491,39 +557,390 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <div class="tw"><table>
 <thead><tr><th>Metric</th><th>Definition</th></tr></thead>
 <tbody>
-<tr><td>Addressed rate</td><td>Share of comments followed by a code change that resolves them. uReview reference: about 67%</td></tr>
+<tr><td>Addressed rate</td><td>Share of comments followed by a code change that resolves them. uReview reference: about 67%. Revision 2: "addressed" means a later commit on the PR changes lines within <code>changed_lines</code> of <code>changed_file</code> (<a href="#d9">§10 D9</a>)</td></tr>
+<tr><td>Comment outcome (rev 2)</td><td>Each comment labelled fixed, wrong, intentional, or doesn't matter (<a href="#d9">§10 D9</a>)</td></tr>
 <tr><td>Developer response and sentiment</td><td>Whether developers reply, and the tone of replies or reactions</td></tr>
 <tr><td>False positives</td><td>Comments that developers dismiss or mark wrong. Watch for confident bad comments</td></tr>
 <tr><td>Trajectory logs</td><td>Full agent trajectory (tool calls, context selected, model calls) for each run</td></tr>
 <tr><td>Reward per dollar</td><td>Quality gain divided by added model cost</td></tr>
 <tr><td>Cost per review</td><td><span class="tag proposed">Proposed</span>: tokens and dollars by model tier</td></tr>
 <tr><td>Run-to-run stability</td><td><span class="tag proposed">Proposed</span>: share of findings that reappear on unchanged code across reruns (addresses P5)</td></tr>
+<tr><td>Cache hit rate (rev 2)</td><td><span class="tag proposed">Proposed</span>: share of input tokens served from the prompt cache, alerted on (<a href="#d7">§10 D7</a>)</td></tr>
+<tr><td>Revert and incident rate (rev 2)</td><td><span class="tag proposed">Proposed</span>: guardrail metric per repo, the input to circuit breakers (<a href="#open">§12 Q23</a>)</td></tr>
 </tbody></table></div>
 <p>Source (ref. J): add a post-processing layer that rates, categorises, filters, and deduplicates comments before posting. Track real outcomes, not only comment counts.</p>
+<p class="rev">Changed in revision 2: pinned "addressed" to a diff-based definition and added outcome labels, cache hit rate, and revert rate. Greptile reports address rate from subsequent-commit diffs in one post and from an unvalidated LLM judge in another, and the baselines drift between posts (greptile-research.md G26 and G5, "Greptile v4 + New Pricing"). Anthropic classifies each comment by author response and uses revert and incident rates as guardrails (claude-blog-research.md P1).</p>
+</section>
+
+<section id="decisions">
+<h2>10. Research-backed design decisions</h2>
+<p>Each decision states the decision, the evidence (research file and post title), and a status. <span class="tag adopted">Adopted</span> means a cited source supports it. <span class="tag proposed">Proposed</span> means our inference. A sub-part marked differently from its parent is called out inline. All <span class="tag sr">(SR)</span> figures are orientation only.</p>
+
+<div class="block" id="d1">
+<h3>D1. Independent verifier pass on every candidate bug</h3>
+<p><strong>Decision</strong>: after Analyze bugs, each candidate goes to a verifier with a fresh context and a different prompt, whose job is to prove or disprove it. Only candidates the verifier fails to refute are posted. The verifier may call the <a href="#step3">§3.3</a> binding checker and run code in the sandbox.</p>
+<p><strong>Evidence</strong>:</p>
+<ul>
+<li>anthropic-news-research.md #17, "Making frontier cybersecurity capabilities available to defenders": Claude tries to prove or disprove its own finding in multiple stages to filter false positives, with separate severity and confidence ratings.</li>
+<li>claude-blog-research.md P1, "How the Claude Code team does code review": parallel bug hunters, then verifier agents vote; only findings with enough agreement are posted.</li>
+<li>greptile-research.md G10, "Greptile v3, an agentic approach to code review": the agent challenges its own hypotheses, which drops low-confidence comments.</li>
+<li>anthropic-news-research.md #13, "Project Glasswing: An initial update": of 1,752 assessed high/critical findings, 90.6% were true positives but only 62.4% held their claimed severity <span class="tag sr">(SR)</span>. Model-claimed severity is low-trust.</li>
+</ul>
+<p><strong>Status</strong>: <span class="tag adopted">Adopted</span>. Verifier count, vote threshold, and one-verifier-per-candidate vs voting panel are <span class="tag proposed">Proposed</span> (<a href="#open">§12 Q16</a>). P13 says a panel of 5 reviewers is more than most coding tasks need.</p>
+</div>
+
+<div class="block" id="d2">
+<h3>D2. Risk-tiered human approval</h3>
+<p><strong>Decision</strong>: the change, not the author, sets the tier. Low needs 0 human approvals, Medium 1, High 2. Hard blocks (<a href="#blocks">§7.3</a>) always need a human. Our reviewer never counts as an approver. Approvals are dismissed when new commits land. Start strict and loosen only with evidence.</p>
+<p><strong>Evidence</strong>:</p>
+<ul>
+<li>claude-blog-research.md P1, "How the Claude Code team does code review": Low 0 / Medium 1 / High 2; a second classifier can force a human; CI workflow files always need a human; a bot's approval never counts; approvals are tied to a commit.</li>
+<li>anthropic-news-research.md #17: "Nothing is applied without human approval." claude-blog-research.md P9, "How we made claude.ai 3x faster in two weeks": every PR got automated review plus at least one human approval.</li>
+<li>Counterpoint: greptile-research.md G1 and G20 aim for full auto-approval. We treat that as aspiration.</li>
+</ul>
+<p><strong>Status</strong>: <span class="tag adopted">Adopted</span>. A circuit breaker that tightens bands when revert or incident rates rise is <span class="tag proposed">Proposed</span>. P1 lists it as an unbuilt gap (<a href="#open">§12 Q23</a>).</p>
+</div>
+
+<div class="block" id="d3">
+<h3>D3. Every posted finding cites a concrete reproduction or test</h3>
+<p><strong>Decision</strong>: <code>comment</code> MUST name the failing call site, a failing test, or a reproduction step. For <code>contract-mismatch</code>, the non-binding call site from §3.3 is the minimal reproduction. For test-derived findings, an artifact (log, screenshot, trace, or script) is required. A candidate without one is held or dropped, never posted. Before posting a <code>diff_fix_suggestion</code>, apply it in the sandbox, re-run the binding check, and run the test suite. Drop or mark suggestions that fail.</p>
+<p><strong>Evidence</strong>:</p>
+<ul>
+<li>claude-blog-research.md P10, "Getting the most out of Opus 5.5": report only merge-blocking problems, each with file, line, reason, and how to show the failure; mark unconfirmed findings.</li>
+<li>anthropic-news-research.md #16, "Partnering with Mozilla to improve Firefox's security": minimal test case, detailed PoC, and candidate patch build trust; patch verification re-triggers the bug and runs regression tests.</li>
+<li>anthropic-news-research.md #4, "Introducing the Anthropic Cyber Mission": every OSS Scanner report carries a proof of concept.</li>
+<li>greptile-research.md G2, "Building TREX": an early agent "claimed to have tried something it hadn't"; "bad evidence is worse than no evidence".</li>
+<li>claude-blog-research.md P1: verification makes results "2 to 3x better" (one person's estimate).</li>
+</ul>
+<p><strong>Status</strong>: <span class="tag adopted">Adopted</span>.</p>
+</div>
+
+<div class="block" id="d4">
+<h3>D4. Comment precision and nit suppression</h3>
+<p><strong>Decision</strong>: emit only bug-class findings (Greptile's P0/P1). Drop style, naming, and cleanup findings at the verifier, not only through the prompt. Do not let the review model self-score severity on a numeric scale. After Submit review, a per-repo comment filter drops findings similar to at least 3 previously dismissed comments. Cap findings per PR.</p>
+<p><strong>Evidence</strong>:</p>
+<ul>
+<li>greptile-research.md G26, "How to Make LLMs Shut Up": baseline ~19% good, ~2% wrong, ~79% nits; prompting cut critical comments too; few-shot examples hurt; an LLM severity score with a cutoff was "nearly random"; an embedding filter blocking comments similar to 3 or more downvoted ones raised address rate from 19% to 55+% in 2 weeks <span class="tag sr">(SR)</span>.</li>
+<li>claude-blog-research.md P1: style, diagnostic, and cleanup findings are dropped; substantive-comment share rose from 16% to 54% <span class="tag sr">(SR)</span>.</li>
+<li>greptile-research.md G17, "Rise of the Overnight Agents": P0 breaks production, P1 is a real bug, P2 is style or nit.</li>
+<li>anthropic-news-research.md #16 and #13: maintainers asked for findings filtered to their triage criteria, and some asked Anthropic to slow disclosures.</li>
+</ul>
+<p><strong>Status</strong>: <span class="tag adopted">Adopted</span> for nit dropping and no self-scored severity. The embedding filter's similarity threshold, embedding model, and cold start are <span class="tag proposed">Proposed</span> (<a href="#open">§12 Q31</a>). The per-PR cap value is <span class="tag proposed">Proposed</span>.</p>
+</div>
+
+<div class="block" id="d5">
+<h3>D5. Prompt-injection hardening for agents that read untrusted PR text</h3>
+<p><strong>Decision</strong>: treat the diff, PR description, comments, linked tickets, docs, and wiki text as data. Split the reviewer into unprivileged readers that emit schema-bound candidates and a privileged poster that holds the only write credential (comment-only). Delimit untrusted text in prompts. Flag text addressed to the reviewer or claiming prior human approval. Cheap-model workers get read-only tools. Add injection cases to the §5 dataset.</p>
+<p><strong>Evidence</strong>:</p>
+<ul>
+<li>claude-blog-research.md P13, "A harness for every task": quarantine pattern, where reader agents with no privileges handle untrusted content and a privileged actor acts on structured summaries.</li>
+<li>anthropic-news-research.md #22, "Strengthening our safeguards through collaboration with US CAISI and UK AISI": hidden instructions and false claims that human review had already happened bypassed early classifiers.</li>
+<li>anthropic-news-research.md #23, "Disrupting the first reported AI-orchestrated cyber espionage campaign": task decomposition into innocuous subtasks plus false defensive framing jailbroke an agent.</li>
+<li>anthropic-news-research.md #20, "Our framework for developing safe and trustworthy agents": prompt injection is a named agent threat; Claude Code is read-only by default.</li>
+</ul>
+<p><strong>Status</strong>: <span class="tag proposed">Proposed</span>. The sources name the threat and the quarantine pattern, but none gives tested defences for review agents (anthropic-news-research.md §5 Q3; claude-blog-research.md §5 Q11).</p>
+</div>
+
+<div class="block" id="d6">
+<h3>D6. Sandboxed autonomous testing with no internet by default</h3>
+<p><strong>Decision</strong>: one disposable sandbox per review, network None by default. Allowed egress is the model API and a pinned package mirror. Install from the lockfile only. Keep keys and the GitHub token in a proxy outside the sandbox and mint short-lived credentials per run. Run a pre-flight egress check before every run. Monitor tool calls and kill the run on a scope violation (host other than the dev server, writes outside the workspace). State scope as instructions ("You should only access http://localhost:&lt;port&gt;"). Flag new or unknown dependency names in the PR as candidate <code>security</code> findings. Run rootless with no secrets mounted.</p>
+<p><strong>Evidence</strong>:</p>
+<ul>
+<li>anthropic-news-research.md #6, "Improving our alignment and security practices": no internet by default, only the model API as egress, keys outside the sandbox, verify before every run; a real-time classifier blocks before the tool call; phrase boundaries as instructions; confirm tasks are solvable.</li>
+<li>anthropic-news-research.md #7, "Investigating three real-world incidents in our cybersecurity evaluations": a misconfigured sandbox had live internet; a model published a malicious PyPI package under a name a setup doc referenced <span class="tag sr">(SR)</span>.</li>
+<li>claude-blog-research.md P3, "Claude Code in the cloud": run untrusted PRs in a disposable VM with network None; a proxy holds the GitHub token.</li>
+<li>greptile-research.md G22, "Sandboxing Agents At The Kernel Level": "whatever the process can see, it can send"; rootless Podman. G2: per-review disposable instances, credential rotation, and a warning that "a cache that includes too much becomes haunted".</li>
+</ul>
+<p><strong>Status</strong>: <span class="tag adopted">Adopted</span> for default-deny egress, disposable instances, and out-of-sandbox credentials. The package-mirror exception is <span class="tag proposed">Proposed</span>, because #6 allows only the model API and our tester needs installs (<a href="#open">§12 Q29</a>).</p>
+</div>
+
+<div class="block" id="d7">
+<h3>D7. Cost routing by effort and model</h3>
+<p><strong>Decision</strong>: route by task. Cheap model at low effort for file screening, log and test-output reading, wiki crawl, and reply triage. Frontier model at high effort for the bug decision and verification. Maximum effort and the deepest fan-out for hard-blocked and High-band PRs. Fix the prompt prefix order (static prompt and tools, <code>review.md</code>, PR context, messages), keep tool order deterministic, and change models through a subagent, never mid-session. Cap spend per run at 3 to 5x a normal run; hitting the cap yields "review incomplete" (D13). Use the Batch API for nightly sweeps and eval runs. Re-run the effort sweep on the §5 eval whenever the model changes.</p>
+<p><strong>Evidence</strong>:</p>
+<ul>
+<li>claude-blog-research.md P7, "Using Claude Code: Spending your effort": effort gains are largest for code review and security (Terminal-Bench security 64% to 87%, <span class="tag sr">SR</span>); effort fixes missed cases, not wrong approaches.</li>
+<li>claude-blog-research.md P8, "What a task costs on Opus 5.5": Sonnet or Haiku for lookups and search subagents, Opus for review; 90% vs 96% cache hits is about $1.62 vs about $0.99 in the worked example; agent teams use about 7x the tokens of a standard session.</li>
+<li>claude-blog-research.md P15, "Prompt caching is everything": prefix order and cache breakers. P2: budget cap at 3 to 5x a normal run.</li>
+<li>greptile-research.md G8: a per-task router is "the single most important design choice" <span class="tag sr">(SR)</span>. G19: screening files with a light model, review at "a tenth of the cost" <span class="tag sr">(SR)</span>. G6, "Introducing Greptile Plus and Apex": deeper tiers (1/3/10 credits) found more P0/P1 bugs on large PRs <span class="tag sr">(SR)</span>.</li>
+</ul>
+<p><strong>Status</strong>: <span class="tag adopted">Adopted</span> for the routing principle and cache rules. Specific model names, effort levels per stage, and the risk-band-to-depth mapping are <span class="tag proposed">Proposed</span> (<a href="#open">§12 Q5, Q19</a>).</p>
+</div>
+
+<div class="block" id="d8">
+<h3>D8. Eval design: independent judge and human spot checks</h3>
+<p><strong>Decision</strong>: the primary grader is programmatic (the §5.2 file, lines, and category match plus schema validation). An LLM judge is used only for fuzzy matches. When it is used, it is a different model from the reviewer under test, scores a rubric of checkable claims, sees outputs in random order, and is run twice on the same output to confirm the verdict holds. A human spot-checks a sample of judge decisions each tuning round. Judge the trajectory as well as the output (was context pulled before the finding). Run the eval on every prompt, tool, or model change and daily.</p>
+<p><strong>Evidence</strong>:</p>
+<ul>
+<li>claude-blog-research.md P5, "Automating eval design and hillclimbing with Claude": cheapest grader first; LLM judge with a rubric, random order, blind to baseline, and a different model from the one under test; run the grader twice; warn when the baseline is at or above about 95%.</li>
+<li>anthropic-news-research.md #18, "Protecting the wellbeing of our users": auditor model plus judge model with human spot checks. #21, "Building safeguards for Claude": model grading with human review as a check.</li>
+<li>claude-blog-research.md P1: incident and revert PRs confirmed by experts form an eval that runs daily.</li>
+<li>greptile-research.md G9: the trace is judged as closely as the output. G5: Greptile's "addressed" judge is not validated, which is the failure we avoid.</li>
+</ul>
+<p><strong>Status</strong>: <span class="tag adopted">Adopted</span>. Spot-check sample size is <span class="tag proposed">Proposed</span>.</p>
+</div>
+
+<div class="block" id="d9">
+<h3>D9. Feedback loop: measure whether comments get addressed</h3>
+<p><strong>Decision</strong>: record every posted finding in the findings ledger with a stable ID (file, symbol, category), the head SHA, and the GitHub comment's integer database ID alongside its GraphQL node ID. Mark it addressed when a later commit changes lines within its <code>changed_lines</code>. Label each comment fixed, wrong, intentional, or doesn't matter from the author's response. Derive precision from these labels. Feed "wrong" and "doesn't matter" into the D4 filter. Turn recurring comments into lint rules or <code>review.md</code> entries.</p>
+<p><strong>Evidence</strong>:</p>
+<ul>
+<li>greptile-research.md G26: address rate from subsequent-commit diffs, chosen over reactions.</li>
+<li>claude-blog-research.md P1: four-label author-response classification; recurring comments fixed at the source.</li>
+<li>Spec ref. J (Uber uReview): about 67% addressed; track real outcomes.</li>
+<li>greptile-research.md G21, "Every GitHub Object Has Two IDs": store both IDs. G5 vs G7: addressed baselines of 43% and 52% for the same version, so do not chain or compare vendor numbers.</li>
+</ul>
+<p><strong>Status</strong>: <span class="tag adopted">Adopted</span>.</p>
+</div>
+
+<div class="block" id="d10">
+<h3>D10. Skills and reference packaging</h3>
+<p><strong>Decision</strong>: keep project context short and move procedures into skills. <code>review.md</code> is owned by code owners, with sections for what failure looks like, skip paths, a nit cap, evidence requirements, and per-area gotchas; rule blocks carry path globs and only matching rules load. Each browser flow (sign-in, checkout) is a verification skill that records video and asserts state at each step. Skills use <code>SKILL.md</code> as a hub pointing to spoke files. Wiki incident patterns become per-area gotchas that feed <code>known-incident-pattern</code>. Audit the reviewer prompt for conflicting instructions each tuning round, and express categories through the enum, not long examples. Pin and review third-party skills like dependencies.</p>
+<p><strong>Evidence</strong>:</p>
+<ul>
+<li>claude-blog-research.md P12, "Lessons from Building Claude Code: How We Use Skills": product-verification skills (<code>signup-flow-driver</code>, <code>checkout-verifier</code>) had "the most measurable impact" (no figure); the Gotchas section is the highest-signal content; hub and spoke files.</li>
+<li>claude-blog-research.md P11, "The new rules of context engineering for Claude 5 generation models": more than 80% of the system prompt removed with no measurable eval loss <span class="tag sr">(SR)</span>; audit for conflicts; move verification steps into a skill.</li>
+<li>claude-blog-research.md P1: <code>REVIEW.md</code> from code owners with failure modes, nit cap, skip paths, and file-and-line evidence.</li>
+<li>greptile-research.md G11, "Greptile's Biggest Update Yet": rules scoped by repo, directory, or glob.</li>
+<li>anthropic-news-research.md #1, "Donating Agent Skills to the Agentic AI Foundation": <code>SKILL.md</code> is a cross-vendor standard (70+ platforms, <span class="tag sr">SR</span>); security guidance for skill installers is not yet written.</li>
+</ul>
+<p><strong>Status</strong>: <span class="tag adopted">Adopted</span> for packaging and <code>review.md</code> structure. Third-party skill pinning is <span class="tag proposed">Proposed</span> until the AAIF guidance ships (<a href="#open">§12 Q27</a>).</p>
+</div>
+
+<div class="block" id="d11">
+<h3>D11. Convergence controls and findings ledger</h3>
+<p><strong>Decision</strong>: suppress re-posts of ledger findings. After round 2, re-review only the incremental diff. After round 3, post one "reconsider the approach" note instead of more findings. Flag the bug class so the author fixes every instance. Use <code>git blame</code> to divert candidates on lines older than <code>base_ref</code> to a nightly sweep, not to PR comments.</p>
+<p><strong>Evidence</strong>: claude-blog-research.md P1: 3-round cap, diff-only re-review, no repeated findings, flag the bug class, nightly runs over existing code; about 59% of repeat flags were on pre-existing code <span class="tag sr">(SR)</span>. P2: a ledger with one record per item so open items are not re-reported. greptile-research.md G20, "There is an AI Code Review Bubble": fix-and-re-review loops until no new comments, with ambiguity escalated to a human.</p>
+<p><strong>Status</strong>: <span class="tag adopted">Adopted</span> for the controls. The <code>git blame</code> filter and the round definition are <span class="tag proposed">Proposed</span> (<a href="#open">§12 Q18, Q22</a>).</p>
+</div>
+
+<div class="block" id="d12">
+<h3>D12. Reviewer independence from the author model</h3>
+<p><strong>Decision</strong>: detect the author model from <code>Co-Authored-By</code> trailers and branch prefixes (<code>codex/</code>, <code>cursor/</code>, <code>claude/</code>). A/B test two setups on the §5 eval: (a) same family with fresh context and a different prompt, (b) a different model family. Adopt whichever wins on recall and stability at equal cost.</p>
+<p><strong>Evidence</strong>: for inversion, greptile-research.md G19 ("model inversion" raised bug catch rate by about 10%, <span class="tag sr">SR</span>) and G23, "Software Needs An Independent Auditor" (the value is uncorrelated failures). Against, greptile-research.md G24, "AI Code Review: Should the Author Be The Reviewer?" (stateless calls and different scaffolding give independence anyway) and claude-blog-research.md P1 (Claude reviews Claude-written code with fresh-context subagents; about 90% of Claude Code is Claude-written, <span class="tag sr">SR</span>).</p>
+<p><strong>Status</strong>: <span class="tag proposed">Proposed</span>. The sources disagree (<a href="#open">§12 Q30</a>).</p>
+</div>
+
+<div class="block" id="d13">
+<h3>D13. Failure is never an empty review</h3>
+<p><strong>Decision</strong>: a branch failure, timeout, budget stop, or <code>stop_reason: "refusal"</code> produces a "review incomplete" status. Record a finding as posted only after the GitHub API confirms it. Re-check that the head SHA is unchanged before posting.</p>
+<p><strong>Evidence</strong>:</p>
+<ul>
+<li>claude-blog-research.md P2: a failed read is "unreadable", never a quiet day; confirm before recording; re-verify before posting; a run that hits its cap stops with <code>budget_reached</code> instead of failing. P6: refusals return HTTP 200 with <code>stop_reason: "refusal"</code>.</li>
+<li>anthropic-news-research.md #8, "Fable 5's cyber safeguards and our jailbreak framework": high-uplift vulnerability finding is blocked, while secure coding is benign, so <code>security</code> prompts may be refused.</li>
+</ul>
+<p><strong>Status</strong>: <span class="tag adopted">Adopted</span> for the principle (from a different system in P2). Its application to PR review is our mapping.</p>
+</div>
+
+<div class="block" id="d14">
+<h3>D14. Suggestions only; no automatic fixes</h3>
+<p><strong>Decision</strong>: the system never commits, applies, or opens a PR with <code>diff_fix_suggestion</code>. It posts suggestions only.</p>
+<p><strong>Evidence</strong>: anthropic-news-research.md #17: "Nothing is applied without human approval"; #16: passing tests do not make an AI patch mergeable. greptile-research.md G23: a reviewer that also generates code shares failure modes and has an incentive to go easy on its own output.</p>
+<p><strong>Status</strong>: <span class="tag adopted">Adopted</span>.</p>
+</div>
+</section>
+
+<section id="prior-art">
+<h2>11. Related prior art</h2>
+<p>All figures marked <span class="tag sr">(SR)</span> are self-reported by the vendor and not independently verified.</p>
+<div class="tw"><table>
+<thead><tr><th>Source</th><th>Key claim</th><th>What we take from it</th></tr></thead>
+<tbody>
+<tr><td>claude-blog-research.md P1, "How the Claude Code team does code review"</td><td>Verifier vote, risk-tiered approvals (0/1/2), daily incident eval, convergence caps. Substantive comments 16% to 54% <span class="tag sr">(SR)</span></td><td>D1, D2, D8, D9, D11; §7.2 approval counts; CI workflows as a hard block</td></tr>
+<tr><td>claude-blog-research.md P5, "Automating eval design and hillclimbing with Claude"</td><td>Train/test split, keep/revert rule, judge differs from the model under test, grader run twice</td><td>§5.2 guards; D8</td></tr>
+<tr><td>claude-blog-research.md P7, "Using Claude Code: Spending your effort"</td><td>Effort gains largest for code review and security; fixes missed cases, not wrong approaches</td><td>§6.1 effort axis; D7</td></tr>
+<tr><td>claude-blog-research.md P8 and P15, cost and prompt caching posts</td><td>Turns × context drives cost; cache order and breakers; Batch is half price</td><td>D7 cache and batch rules; §9 cache hit rate</td></tr>
+<tr><td>claude-blog-research.md P13, "A harness for every task"</td><td>Fan-out with a barrier, adversarial verification, quarantine of untrusted input</td><td>D1, D5; §2.2 Verify step</td></tr>
+<tr><td>claude-blog-research.md P12, "How We Use Skills"</td><td>Verification skills had the most measurable impact; Gotchas section; hub and spoke</td><td>D10</td></tr>
+<tr><td>anthropic-news-research.md #17, Claude Code Security</td><td>Prove-or-disprove verification, separate severity and confidence, human approval before applying</td><td>D1, D14</td></tr>
+<tr><td>anthropic-news-research.md #13, Glasswing initial update</td><td>90.6% true positives, 62.4% severity confirmed on assessed findings <span class="tag sr">(SR)</span></td><td>Treat model severity as low-trust (D1)</td></tr>
+<tr><td>anthropic-news-research.md #16, Mozilla Firefox security</td><td>Minimal test case, PoC, candidate patch; two-axis patch verification; task verifiers</td><td>D3; §3.3 binding checker as a tool</td></tr>
+<tr><td>anthropic-news-research.md #6 and #7, security practices and eval incidents</td><td>No internet by default, keys outside, pre-run egress check; malicious package from a setup doc</td><td>D6</td></tr>
+<tr><td>anthropic-news-research.md #22, CAISI and UK AISI collaboration</td><td>Hidden instructions and fake "human review happened" claims bypassed classifiers</td><td>D5</td></tr>
+<tr><td>greptile-research.md G19, "How to Build a Code Review Agent"</td><td>Same five problems as §1; defines model inversion (about 10% more bugs, <span class="tag sr">SR</span>); cheap-model file screening</td><td>§2.1 definition; D7, D12</td></tr>
+<tr><td>greptile-research.md G26, "How to Make LLMs Shut Up"</td><td>About 79% of raw comments were nits; embedding filter took address rate 19% to 55+% <span class="tag sr">(SR)</span>; diff-based address rate</td><td>D4, D9; §5.3</td></tr>
+<tr><td>greptile-research.md G2, "Building TREX"</td><td>One execution subagent per issue; artifacts required; precision as cross-run consistency</td><td>§2.5; D3; §5.2 stability runs</td></tr>
+<tr><td>greptile-research.md G17, "Rise of the Overnight Agents"</td><td>Revert linkage via branch naming; P0/P1/P2 taxonomy; AI-author detection from trailers and prefixes</td><td>§5.1 dataset; D4; D12</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="research">
+<h2>Research digests</h2>
+<p>Eight digests, one block each. Each block gives the source set, the main lesson for us, and the most useful Proposed actions. File names are plain text and refer to files kept next to the spec. Every vendor figure in these digests is <span class="tag sr">self-reported (SR)</span> unless stated otherwise. None of these digests publishes independent precision or recall for general code review. Full digests, with per-post detail and complete action tables, stay in the files.</p>
+<div class="warn">
+<p><strong>Fetch caveats that apply here.</strong></p>
+<ul>
+<li>The Graphite digest was built from Wayback Machine snapshots. Every live Graphite post URL returned 404 on 2026-11-09, so its content is an archived copy and may differ from what Graphite originally published.</li>
+<li>The CodeRabbit digest covers only the first blog page (page 1 of 21, nine posts) plus five product pages. Older posts are not covered.</li>
+<li>The Claude blog, Anthropic news, Greptile, Macroscope, CodeRabbit product-page, and DeepSource digests were built from model-generated page summaries, not raw HTML. Re-check any figure on the live page before it gates a decision (<a href="#open">§12 Q36</a>). The Cursor digest read its blog posts as raw HTML but its product page as a summary.</li>
+<li>Spec revision 2 cites only the first three digests. The other five are inputs for a later revision.</li>
+</ul>
+</div>
+
+<div class="block" id="r-cb">
+<h3>Claude engineering blog: claude-blog-research.md</h3>
+<p><strong>Source set</strong>: 16 claude.dev posts (P1 to P16), 2026-04 to 2026-10, fetched 2026-11-09, no failures. All Anthropic figures are <span class="tag sr">SR</span>.</p>
+<p><strong>Main lesson</strong>: verification is the largest lever. Parallel finders plus voting verifiers, risk-tiered human approval (0/1/2), convergence caps, and a daily incident-based eval let Anthropic cut human review time without raising reverts <span class="tag sr">(SR)</span>. P1's circuit-breaker gap (no automatic tightening when reverts rise) is stated by Anthropic itself.</p>
+<p><strong>Most useful Proposed actions</strong>:</p>
+<ul>
+<li>Add a Verify stage between Analyze bugs and Submit review, using different prompts and contexts from the finder (M1).</li>
+<li>Keep a per-PR findings ledger keyed by (file, symbol, category). Suppress re-posts, re-review only the incremental diff, post one "reconsider approach" note after round 3 (M4).</li>
+<li>Add CI workflow files to the hard blocks, require 2 humans for the High band, dismiss approvals on new commits, never count our reviewer as an approver (M10).</li>
+<li>Split the dataset into train and test, apply the keep/revert rule, run the eval daily and on every reviewer change, add known-clean PRs (M6, M7).</li>
+<li>Fix the cache prefix order and alert on cache hit rate; emit <code>bugs</code> through a strict schema tool (M18, M20).</li>
+</ul>
+</div>
+
+<div class="block" id="r-an">
+<h3>Anthropic news: anthropic-news-research.md</h3>
+<p><strong>Source set</strong>: 26 anthropic.com news posts (#1 to #26), 2024-11 to 2026-10, fetched 2026-11-09 through summarising fetches. Four posts are low relevance. Several page dates are anomalous.</p>
+<p><strong>Main lesson</strong>: a finding is trusted only when the model tries to refute it and attaches evidence, and severity is the weak axis. Of 1,752 assessed high/critical OSS findings, 90.6% were true positives but only 62.4% held their severity <span class="tag sr">(SR)</span>. Autonomous runs need default-deny egress, and prompt injection (including fake "human review already happened" claims) is a named threat.</p>
+<p><strong>Most useful Proposed actions</strong>:</p>
+<ul>
+<li>Add a "disprove" pass per candidate, with a different prompt or context from the finder (#17).</li>
+<li>Default-deny network for the test sandbox with a pre-flight egress check, keys held outside, install from a lockfile against a pinned mirror (#6, #7).</li>
+<li>Treat all PR text, comments, tickets, docs, and wiki entries as data; delimit them and flag text addressed to the reviewer (#22, #20).</li>
+<li>Attach the failing call site as a minimal reproduction in <code>comment</code>; apply each <code>diff_fix_suggestion</code> in the sandbox and re-run checks before posting (#4, #16).</li>
+<li>Post suggestions only. No auto-commit or auto-apply (#17, #20).</li>
+</ul>
+</div>
+
+<div class="block" id="r-gr">
+<h3>Greptile blog: greptile-research.md</h3>
+<p><strong>Source set</strong>: 27 Greptile posts (G1 to G27), 2024-06 to 2026-10, fetched 2026-11-09 through summarising fetches; four posts judged not relevant. Greptile sells AI review, so all its numbers are <span class="tag sr">SR</span> A/B tests on its own product without public methodology.</p>
+<p><strong>Main lesson</strong>: noise, not discovery, is the problem. About 79% of raw comments were nits <span class="tag sr">(SR)</span>, prompting did not fix it, and an outcome-labelled embedding filter did (address rate 19% to 55+%, <span class="tag sr">SR</span>). G19 names the same five problems as spec §1 and defines "model inversion". Metric definitions drift between posts (43% vs 52% addressed baseline for the same version).</p>
+<p><strong>Most useful Proposed actions</strong>:</p>
+<ul>
+<li>Add a per-repo embedding filter after Submit review that drops findings similar to 3 or more downvoted comments (R2).</li>
+<li>Compute "addressed" from later-commit diffs within <code>changed_lines</code>, not from an unvalidated LLM judge (R4).</li>
+<li>Run each eval PR at least 3 times and report cross-run consistency as precision (R5).</li>
+<li>Drop any test-derived finding that has no artifact (log, screenshot, trace, script) (R9).</li>
+<li>Detect the author model from trailers and branch prefixes and A/B model inversion against same-family fresh context (R1).</li>
+</ul>
+</div>
+
+<div class="block" id="r-ms">
+<h3>Macroscope: macroscope-research.md</h3>
+<p><strong>Source set</strong>: 27 blog posts (B1 to B27, 2025-09 to 2026-10) plus 10 posts from the vendor's content index (C1 to C10), fetched 2026-11-09 through summarising fetches. Benchmarks are vendor-run <span class="tag sr">(SR)</span>; the vendor says it tuned on its own benchmark. Page dates conflict with page content, and two leaderboard snapshots disagree.</p>
+<p><strong>Main lesson</strong>: Macroscope dropped its fixed AST-walking context step and reports 14% faster review and +5% recall with no precision change <span class="tag sr">(SR)</span>. That challenges the spec's reliance on Python <code>ast</code> as the only context path. It also separates permissive detection from strict validation and gates approval with a separate agent whose policy file is a tamper target.</p>
+<p><strong>Most useful Proposed actions</strong>:</p>
+<ul>
+<li>Keep §3 as the deterministic candidate generator for contract checks, and A/B it against agent-chosen exploration on our dataset.</li>
+<li>Split Analyze bugs into detect then validate; the validator rejects hedged findings and findings with no concrete failing path.</li>
+<li>Load review config (<code>review.md</code>, flow globs, risk weights) from the base branch, never the PR head, and escalate any PR that edits it.</li>
+<li>Run risk scoring in shadow mode before it approves anything, and post a check result in every case (neutral on budget stop or error).</li>
+<li>Add control commits with no known bug (about 1 clean per 3 buggy) so precision is measurable.</li>
+</ul>
+</div>
+
+<div class="block" id="r-cr">
+<h3>CodeRabbit: coderabbit-research.md</h3>
+<p><strong>Source set</strong>: five product pages plus blog posts B1 to B9. These nine are everything on blog index page 1 of 21; pages 2 to 21 were not fetched, so older posts are not covered. Fetched 2026-11-09 through summarising fetches. No independent benchmark was found. Figures are <span class="tag sr">SR</span> and several have no visible source.</p>
+<p><strong>Main lesson</strong>: separate the finder from the verifier, and make runtime results carry preconditions. A pass without evidence the target code was exercised says nothing; "not reproduced" is not "safe". The B1 overlap table (17 caught by both, 5 new-only, 2 lost, 9 neither) shows that a net gain of 3 catches hid 2 regressions <span class="tag sr">(SR, n=33)</span>.</p>
+<p><strong>Most useful Proposed actions</strong>:</p>
+<ul>
+<li>Run the frontier verifier in its own pass with a prompt that forbids trusting identifiers and comments, and downgrade or drop candidates with no caller path from an entry point.</li>
+<li>Record <code>app_ready</code> and <code>target_exercised</code> in tester output; use a three-state verdict (reproduced, not reproduced, inconclusive); never use "not reproduced" to lower risk.</li>
+<li>Report an overlap table (both, new-only, lost, neither) for every prompt or model change; keep every caught bug as a permanent regression case.</li>
+<li>Bind every run and finding to the <code>head_ref</code> SHA, recheck prior findings on a new push, and resolve only when a rerun no longer reproduces them.</li>
+<li>Keep uncertain items out of <code>bugs</code>; log them in the trajectory instead.</li>
+</ul>
+</div>
+
+<div class="block" id="r-ds">
+<h3>DeepSource: deepsource-research.md</h3>
+<p><strong>Source set</strong>: 55 of 148 posts read from the blog index (2018 to 2026), 93 skipped with reasons, fetched 2026-11-09 through summarising fetches. Vendor figures are <span class="tag sr">SR</span>. A site-wide "82% accuracy" claim in page metadata has no method and is ignored as evidence. The digest notes three internal extraction inconsistencies.</p>
+<p><strong>Main lesson</strong>: deterministic first, LLM second. DeepSource seeds the LLM with static-analysis findings and exposes graph stores (data flow, control flow, taint, reachability) as tools, because LLM-only review can skip vulnerable code entirely. Scope findings to the change, block only on newly introduced issues, and benchmark on real bugs with a blind judge and 100 or more items. A re-run of one vendor benchmark by another vendor moved 82% to 45% <span class="tag sr">(SR)</span>.</p>
+<p><strong>Most useful Proposed actions</strong>:</p>
+<ul>
+<li>Pass §3.3 candidates and <code>call_sites</code> to the frontier model as seeded findings, and expose the call graph as a callers-of and callees-of tool.</li>
+<li>Run §3 on <code>base_ref</code> too and drop findings already present there, so only newly introduced issues are reported.</li>
+<li>Add a cheap-model confirm or reject pass per candidate before the frontier model writes comments.</li>
+<li>Build the dataset from reverts and bug-fix commits only, with 100 or more PRs and a held-out test split.</li>
+<li>Install in the sandbox from hash-pinned lockfiles with an egress allow-list; supply-chain tampering between source and artifact is invisible to diff review.</li>
+</ul>
+</div>
+
+<div class="block" id="r-cu">
+<h3>Cursor (Bugbot and blog): cursor-research.md</h3>
+<p><strong>Source set</strong>: the Bugbot product page (summary) plus 56 blog posts (C1 to C56), 2024-05 to 2026-10, fetched 2026-11-09. Blog posts were read as raw HTML, which is higher fidelity than the other digests. All figures are <span class="tag sr">SR</span>, and scale and rate figures are inconsistent across posts (resolution rate 70%+, 76%, 78.13%, 80%).</p>
+<p><strong>Main lesson</strong>: Bugbot's v1 pipeline is the most detailed public vote-based design: 8 parallel passes with randomised diff order, majority vote, category filter, validator model, cross-run dedupe. The largest later gain came from switching to a fully agentic design with aggressive prompts, which makes the verifier and filters carry precision. Execution-based self-verification of findings was promised but not confirmed as shipped.</p>
+<p><strong>Most useful Proposed actions</strong>:</p>
+<ul>
+<li>Run k=3 to 8 finder passes over shuffled hunk order; post candidates found by 2 or more passes or confirmed by the verifier. Tune k on the §5 eval.</li>
+<li>Key the ledger on diff hash as well as finding ID; if the head diff matches a reviewed diff, post nothing new; match candidates against existing PR comment threads.</li>
+<li>Generate candidate <code>review.md</code> rules from dismissals and human-caught misses, with owner approval before promotion (learned rules from replies are an injection surface).</li>
+<li>For historical-PR evals, reinit the repo at <code>base_ref</code> as one commit and deny egress except the package mirror, or the reviewer can read the future fix.</li>
+<li>Run a pre-flight "environment healthy" check and post "review incomplete" if it fails, because a missing environment shows as silent quality loss.</li>
+</ul>
+</div>
+
+<div class="block" id="r-gt">
+<h3>Graphite blog: graphite-research.md</h3>
+<p><strong>Source set</strong>: 99 posts on the blog index (2023-09 to 2026-04); 66 selected and retrieved from Wayback Machine snapshots (GT1 to GT37 groups), 33 skipped, 11 of the retrieved ones read by keyword skim only. Every live post URL returned 404 on 2026-11-09, so content is archived raw page text, not the live page. Graphite agreed to join Cursor in 2025-12. Figures are <span class="tag sr">SR</span> and mostly lack definitions.</p>
+<p><strong>Main lesson</strong>: false-positive base rates set the ceiling. A 5% false-positive rate gave a roughly 50/50 wrong flag when real violations were rarer than 5%. Reporting only through a function call cut the false-to-real ratio from about 9:1 to 1:1 (2023 to 2024, marked outdated by Graphite). Reviewer architecture after 2024 is opaque: no post describes verification, voting, or dedup.</p>
+<p><strong>Most useful Proposed actions</strong>:</p>
+<ul>
+<li>Emit each bug through a non-forced <code>report_bug</code> tool call, so "no call" yields <code>{"bugs": []}</code>; add known-clean PRs to measure invented concerns.</li>
+<li>Report precision per category against that category's base rate, and gate posting per category on precision, not an overall false-positive rate.</li>
+<li>A test-derived finding must reproduce on 2 consecutive head runs and must not reproduce on base before it reaches the verifier.</li>
+<li>For stacked PRs, set <code>base_ref</code> to the PR's actual base and run the binding check per PR in stack order.</li>
+<li>Key the ledger and re-review trigger on tree or patch-id, not head SHA, so a restack with no code change does not start a new round.</li>
+</ul>
+</div>
 </section>
 
 <section id="open">
-<h2>10. Open questions (not decided)</h2>
+<h2>12. Open questions (not decided)</h2>
+<p class="rev">Changed in revision 2: moved from §10. Q1 to Q14 keep their numbers. Q15 to Q36 merge the open questions from the three digests, with duplicates folded into one entry. The source digest sections are cited as CB §5 (claude-blog-research.md), AN §5 (anthropic-news-research.md), and GR §6 (greptile-research.md).</p>
+
+<h3 id="oq1">12.1 From revision 1</h3>
 <ol>
-<li>Language support beyond Python <code>ast</code> for <a href="#impact">§3</a>.</li>
+<li>Language support beyond Python <code>ast</code> for <a href="#impact">§3</a>. No research post addresses it (CB §5 Q10, GR §6 Q7).</li>
 <li>Format of <code>changed_lines</code> for ranges and multi-range findings.</li>
-<li>Final <code>bug_category</code> enum. All values except <code>contract-mismatch</code> are Proposed.</li>
+<li>Final <code>bug_category</code> enum. All values except <code>contract-mismatch</code> are Proposed. Greptile's per-agent failure profiles (G17) suggest <code>n-plus-one</code> and <code>config-error</code>, to add only if the eval shows them.</li>
 <li>Weights and scales for the six risk factors, and the band for a score of exactly 24.</li>
-<li>Which cheap model and which frontier model to use. "Jev" appears in the sketch only as an example.</li>
+<li>Which cheap model and which frontier model to use. "Jev" appears in the sketch only as an example and is not a model in any research post. Candidates named in CB: Haiku 5.5 (availability unconfirmed), Sonnet 5.5, Opus 5.5, and Fable 5.1 (escalation only).</li>
 <li>Call-graph depth limit and handling of dynamic calls that cannot be resolved.</li>
-<li>Living wiki crawl cadence, storage, and retrieval method.</li>
-<li>How the browser agent picks flows beyond sign-in and checkout.</li>
+<li>Living wiki crawl cadence, storage, and retrieval method. §2.4 now proposes refresh on merge plus a scheduled crawl.</li>
+<li>How the browser agent picks flows beyond sign-in and checkout. Proposed: a flow map in the wiki, drafted by a model and confirmed by owners (GR G19).</li>
 <li>Whether DAST (OWASP ZAP) runs in the sandbox.</li>
 <li>Whether to adopt TokenEconomizer after the one-week trial.</li>
 <li>Size and labelling process for the historical PR dataset.</li>
-<li>How the adversarial second agent differs from the primary reviewer (model, prompt, or context).</li>
-<li>Meaning of "model inversion" in the sketch.</li>
+<li>How the adversarial second agent differs from the primary reviewer. Partly answered: fresh context and a different prompt (<a href="#d1">§10 D1</a>). Model family is Q30.</li>
+<li>Resolved in revision 2: "model inversion" means reviewing with a different model family from the author (<a href="#components">§2.1</a>, GR G19).</li>
 <li>Whether this system adopts uReview-style specialised reviewers (single-file, multi-file, monorepo, AI linter, team agents).</li>
+</ol>
+
+<h3 id="oq2">12.2 From the research digests</h3>
+<ol start="15">
+<li><strong>No baseline of our own.</strong> Every headline figure is self-reported: Anthropic's P1 metrics and the "2 to 3x" estimate, Glasswing's 90.6%, and Greptile's +20%, +10%, and 19% to 55%. No post publishes precision for general (non-security) code review. Measure our own baseline on §5 before setting targets (CB Q1, AN Q1, GR Q1).</li>
+<li><strong>Verifier mechanics.</strong> Number of verifiers, vote threshold, and cost per finding. How "prove or disprove" works is not described: execution, a separate model, or the same context (CB Q3, AN Q2).</li>
+<li><strong>Severity outside the schema.</strong> Severity, confidence, and pre-existing tags help triage, but §4 forbids new keys. Decide whether they stay in the ledger or the schema gets a version bump, and whether risk bands (§7.2) consume per-finding severity given low severity calibration (CB Q2, AN Q9).</li>
+<li><strong>What counts as a round</strong> for the 3-round cap: each push or each review request (CB Q4).</li>
+<li><strong>Effort mapping.</strong> P7's gains come from Terminal-Bench, not PR review. We have no data on how effort changes recall or precision on our dataset (CB Q5).</li>
+<li><strong>Model availability and refusals.</strong> A model can be withdrawn the same day (AN #11). It is unclear whether <code>security</code> prompts or exploit-like PoCs in <code>comment</code> trip cyber classifiers; the CJS framework is a draft with no measured false-positive rates. Needs a fallback model and a refusal smoke test (AN Q5, Q6).</li>
+<li><strong>Indexer vs agentic search.</strong> P16 moved away from RAG; G15 suggests NL-summary, function-level embeddings if embeddings are kept (single example). No post measures review recall for either. Run an A/B (CB Q7).</li>
+<li><strong>Pre-existing bugs.</strong> Owner and destination for nightly-sweep findings (issues or wiki) (CB Q8).</li>
+<li><strong>Circuit breakers.</strong> Threshold and window for tightening approval when revert or incident rates rise. An open gap at Anthropic too (CB Q9).</li>
+<li><strong>Prompt-injection defences are untested.</strong> D5 is design inference. No post measures injection through PR content into a reviewer (CB Q11, AN Q3).</li>
+<li><strong>Cache economics for short reviews.</strong> P8 and P15 assume long sessions; for small PRs, cache-write overhead may dominate (CB Q12).</li>
+<li><strong>Hosting.</strong> Managed Agents or cloud routines vs our own sandbox for the webhook pipeline (CB Q14).</li>
+<li><strong>Skill vetting.</strong> AAIF installer security guidance is not yet published; how to vet third-party skills before loading them (AN Q4).</li>
+<li><strong>Data retention.</strong> Fable-class models require 30-day retention. Check whether sending private repo code through the reviewer is acceptable, or whether EFS or ZDR is needed (AN Q7).</li>
+<li><strong>Sandbox egress for dependency install.</strong> #6 assumes egress only to the model API, but the tester needs package installs. G22 covers filesystem isolation only, not network, seccomp, or resource limits. The mirror and lockfile approach needs validation (AN Q8, GR Q6).</li>
+<li><strong>Model inversion vs same-family fresh context.</strong> The ~10% gain has no dataset size and the cited N+1 research has no source. G24 and P1 argue independence comes from context, not family (GR Q3).</li>
+<li><strong>Comment-filter details.</strong> Similarity threshold, embedding model, cold start for new repos, and behaviour when a comment is similar to both upvoted and downvoted history (GR Q4).</li>
+<li><strong>Merge and dedup rule</strong> for per-hypothesis findings in Submit review. Greptile does not describe its rule (GR Q5).</li>
+<li><strong>Addressed-rate validity.</strong> §9 pins a diff-based definition; it may miss fixes made outside <code>changed_lines</code> or count unrelated edits. Validate against human labels (GR Q2).</li>
+<li><strong>Ticket-intent checks.</strong> Comparing a PR with ticket acceptance criteria has no precision data and risks feature-completeness comments that are not bugs (GR Q8).</li>
+<li><strong>Date anomalies</strong> in several fetched pages (AN #15, #17, #19, #21; GR G4, G7). Treat page dates as approximate (AN Q10, GR Q10).</li>
+<li><strong>Fetch fidelity.</strong> All three digests were built from model-generated page summaries, not raw HTML. Re-check any figure against the live page before it gates a decision or is cited externally (CB Q13, AN Q10, GR Q11).</li>
 </ol>
 </section>
 
 <section id="refs">
-<h2>11. References</h2>
+<h2>13. References</h2>
 <div class="tw"><table>
 <thead><tr><th>Ref</th><th>Source</th><th>Description</th></tr></thead>
 <tbody>
@@ -532,15 +949,19 @@ footer{padding:16px 0 32px;color:var(--mute);font-size:.9rem}
 <tr><td>C</td><td>Feature gating video</td><td>Feature flags for controlled rollout and rollback</td></tr>
 <tr><td>D</td><td>Adversarial review video</td><td>Independent second agent reviews to avoid confirmation bias</td></tr>
 <tr><td>E</td><td>Merge-ready vs launch-ready video</td><td>Human final ~20% before launch</td></tr>
-<tr><td>F</td><td><a href="https://github.com/microsoft/TokenEconomizer" target="_blank" rel="noopener noreferrer">https://github.com/microsoft/TokenEconomizer</a></td><td>Local plugin that cuts agent cost 18–31% with micro-skills, tool pruning, and failure-loop detection</td></tr>
+<tr><td>F</td><td><a href="https://github.com/microsoft/TokenEconomizer" target="_blank" rel="noopener noreferrer">https://github.com/microsoft/TokenEconomizer</a></td><td>Local plugin that cuts agent cost 18 to 31% with micro-skills, tool pruning, and failure-loop detection</td></tr>
 <tr><td>G</td><td>"LGTM, Ship It" (Owain Lewis)</td><td>Four-layer review model, risk-scaled review intensity, project <code>review.md</code></td></tr>
 <tr><td>H</td><td>"LGTM / AI code review problem" episode</td><td>Verify behaviour, demand evidence, keep PRs small</td></tr>
 <tr><td>I</td><td>"Merge Mommy"</td><td>Risk-based auto-approval with six factors, score bands, and hard blocks</td></tr>
 <tr><td>J</td><td>Uber uReview</td><td>Multi-agent review with post-processing and outcome tracking</td></tr>
 <tr><td>K</td><td>Cohere ProgramBench talk</td><td>Strong lead plus cheap planners. Lead sets the ceiling, workers set the price</td></tr>
-<tr><td>—</td><td><a href="https://en.wikipedia.org/wiki/Dynamic_application_security_testing" target="_blank" rel="noopener noreferrer">https://en.wikipedia.org/wiki/Dynamic_application_security_testing</a></td><td>Overview of DAST, testing a running app from outside</td></tr>
-<tr><td>—</td><td><a href="https://www.zaproxy.org/" target="_blank" rel="noopener noreferrer">https://www.zaproxy.org/</a></td><td>OWASP ZAP, an open-source DAST tool</td></tr>
+<tr><td>CB</td><td><code>claude-blog-research.md</code></td><td>Digest of 16 Claude engineering blog posts (P1 to P16), fetched 2026-11-09</td></tr>
+<tr><td>AN</td><td><code>anthropic-news-research.md</code></td><td>Digest of 26 Anthropic news posts (#1 to #26), fetched 2026-11-09</td></tr>
+<tr><td>GR</td><td><code>greptile-research.md</code></td><td>Digest of 27 Greptile blog posts (G1 to G27), fetched 2026-11-09</td></tr>
+<tr><td>none</td><td><a href="https://en.wikipedia.org/wiki/Dynamic_application_security_testing" target="_blank" rel="noopener noreferrer">https://en.wikipedia.org/wiki/Dynamic_application_security_testing</a></td><td>Overview of DAST, testing a running app from outside</td></tr>
+<tr><td>none</td><td><a href="https://www.zaproxy.org/" target="_blank" rel="noopener noreferrer">https://www.zaproxy.org/</a></td><td>OWASP ZAP, an open-source DAST tool</td></tr>
 </tbody></table></div>
+<p>The five digests summarised in the Research section but not yet cited by the spec are <code>macroscope-research.md</code>, <code>coderabbit-research.md</code>, <code>deepsource-research.md</code>, <code>cursor-research.md</code>, and <code>graphite-research.md</code>.</p>
 </section>
 
 </main>
